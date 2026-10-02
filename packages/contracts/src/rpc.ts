@@ -25,6 +25,17 @@ import {
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
+  CooperationAwarenessItem,
+  CooperationError,
+  CooperationInbox,
+  CooperationResolveInput,
+  CooperationRunResult,
+  CooperationSettings,
+  CooperationSettingsUpdateInput,
+  CooperationThreadInput,
+  CooperationThreadState,
+} from "./cooperation.ts";
+import {
   Member,
   MemberCredentialResult,
   MemberIdInput,
@@ -320,6 +331,13 @@ export const WS_METHODS = {
   projectMembersList: "projectMembers.list",
   projectMembersAdd: "projectMembers.add",
   projectMembersRemove: "projectMembers.remove",
+
+  // Cooperation analysis (Puff Collab)
+  cooperationSubscribeThread: "cooperation.subscribeThread",
+  cooperationUpdateSettings: "cooperation.updateSettings",
+  cooperationRunAnalysis: "cooperation.runAnalysis",
+  cooperationSubscribeInbox: "cooperation.subscribeInbox",
+  cooperationResolveItem: "cooperation.resolveItem",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -1086,6 +1104,42 @@ const WsProjectMembersRemoveRpc = Rpc.make(WS_METHODS.projectMembersRemove, {
   error: TeamMembersRpcError,
 });
 
+const CooperationRpcError = Schema.Union([CooperationError, EnvironmentAuthorizationError]);
+
+// Emits the thread's cooperation state now and after every change to it.
+const WsCooperationSubscribeThreadRpc = Rpc.make(WS_METHODS.cooperationSubscribeThread, {
+  payload: CooperationThreadInput,
+  success: CooperationThreadState,
+  error: CooperationRpcError,
+  stream: true,
+});
+
+const WsCooperationUpdateSettingsRpc = Rpc.make(WS_METHODS.cooperationUpdateSettings, {
+  payload: CooperationSettingsUpdateInput,
+  success: CooperationSettings,
+  error: CooperationRpcError,
+});
+
+const WsCooperationRunAnalysisRpc = Rpc.make(WS_METHODS.cooperationRunAnalysis, {
+  payload: CooperationThreadInput,
+  success: CooperationRunResult,
+  error: CooperationRpcError,
+});
+
+// The calling member's pending awareness notes and proposals.
+const WsCooperationSubscribeInboxRpc = Rpc.make(WS_METHODS.cooperationSubscribeInbox, {
+  payload: Schema.Struct({}),
+  success: CooperationInbox,
+  error: CooperationRpcError,
+  stream: true,
+});
+
+const WsCooperationResolveItemRpc = Rpc.make(WS_METHODS.cooperationResolveItem, {
+  payload: CooperationResolveInput,
+  success: CooperationAwarenessItem,
+  error: CooperationRpcError,
+});
+
 const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: LaunchEditorInput,
   error: Schema.Union([ExternalLauncherError, EnvironmentAuthorizationError]),
@@ -1613,6 +1667,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectMembersListRpc,
   WsProjectMembersAddRpc,
   WsProjectMembersRemoveRpc,
+  WsCooperationSubscribeThreadRpc,
+  WsCooperationUpdateSettingsRpc,
+  WsCooperationRunAnalysisRpc,
+  WsCooperationSubscribeInboxRpc,
+  WsCooperationResolveItemRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
