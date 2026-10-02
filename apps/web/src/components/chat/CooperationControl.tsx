@@ -5,7 +5,6 @@ import {
 } from "@t3tools/client-runtime/state/cooperation";
 import type {
   CooperationAwarenessItem,
-  CooperationRelationship,
   CooperationSettings,
   EnvironmentId,
   ThreadId,
@@ -24,14 +23,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-
-const RELATIONSHIP_LABELS: Record<CooperationRelationship, string> = {
-  unspecified: "Unspecified",
-  complementary: "Complementary",
-  alternative: "Deliberate alternative",
-};
 
 /**
  * Puff Collab cooperation for one thread: the latest analysis summary, the
@@ -238,24 +230,6 @@ function CooperationSettingsForm({
             }
           }}
         />
-      </label>
-      <label className="flex items-center justify-between gap-2 text-xs">
-        Relationship to other work
-        <Select
-          value={settings.relationship}
-          onValueChange={(value) => void save({ relationship: value as CooperationRelationship })}
-        >
-          <SelectTrigger size="compact" className="w-44" aria-label="Relationship">
-            <SelectValue>{RELATIONSHIP_LABELS[settings.relationship]}</SelectValue>
-          </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
-            {Object.entries(RELATIONSHIP_LABELS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
       </label>
       <ConsentSwitch
         label="Share this thread with cooperation analysis"

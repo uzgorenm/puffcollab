@@ -45,7 +45,6 @@ describe("cooperationSettingsUpdate", () => {
     threadId: ThreadId.make("thread-a"),
     version: 3,
     featureTopic: "billing",
-    relationship: "unspecified",
     analysisEnabled: true,
     textEnabled: true,
     awarenessNotify: true,
@@ -57,8 +56,7 @@ describe("cooperationSettingsUpdate", () => {
       threadId: settings.threadId,
       expectedVersion: 3,
       featureTopic: "billing",
-      relationship: "unspecified",
-      analysisEnabled: false,
+        analysisEnabled: false,
       textEnabled: false,
       awarenessNotify: false,
     });

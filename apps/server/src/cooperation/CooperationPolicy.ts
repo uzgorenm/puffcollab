@@ -9,9 +9,9 @@ import {
   COOPERATION_NOTE_MAX_CHARS,
   COOPERATION_SUMMARY_MAX_CHARS,
   type CooperationCitation,
-  type CooperationRelationship,
   type MemberId,
   type OrchestrationEvent,
+  type RelatedThreadRelationship,
   type ThreadId,
 } from "@t3tools/contracts";
 
@@ -21,6 +21,20 @@ import type {
   CooperationAnalystOutput,
   CooperationAnalystThreadRef,
 } from "../textGeneration/CooperationAnalysisPrompt.ts";
+
+/** How an analyzed pair relates, as the analyst is told. */
+export type CooperationPairRelationship = RelatedThreadRelationship | "unspecified";
+
+/**
+ * The pair's relationship from its owners' related-thread links, in either
+ * direction. Links that disagree, or no link at all, leave it unspecified.
+ */
+export function pairRelationship(
+  links: ReadonlyArray<RelatedThreadRelationship>,
+): CooperationPairRelationship {
+  const [first] = links;
+  return first !== undefined && links.every((link) => link === first) ? first : "unspecified";
+}
 
 /** Most recent eligible events exported per thread. */
 export const EXPORT_MAX_EVENTS_PER_THREAD = 40;
@@ -89,7 +103,6 @@ export interface ExportGrant {
   readonly ownerMemberId: MemberId;
   readonly version: number;
   readonly featureTopic: string;
-  readonly relationship: CooperationRelationship;
   readonly textEnabled: boolean;
 }
 

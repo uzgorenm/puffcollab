@@ -63,7 +63,7 @@ export function cooperationSettingsUpdate(
   patch: Partial<
     Pick<
       CooperationSettings,
-      "featureTopic" | "relationship" | "analysisEnabled" | "textEnabled" | "awarenessNotify"
+      "featureTopic" | "analysisEnabled" | "textEnabled" | "awarenessNotify"
     >
   >,
 ): CooperationSettingsUpdateInput {
@@ -73,7 +73,6 @@ export function cooperationSettingsUpdate(
     threadId: settings.threadId,
     expectedVersion: settings.version,
     featureTopic: next.featureTopic.trim(),
-    relationship: next.relationship,
     analysisEnabled,
     textEnabled: analysisEnabled && next.textEnabled,
     awarenessNotify: analysisEnabled && next.awarenessNotify,

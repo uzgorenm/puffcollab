@@ -15,6 +15,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -148,7 +149,6 @@ const consent = (
       threadId,
       expectedVersion: current.settings.version,
       featureTopic: "billing",
-      relationship: "unspecified",
       analysisEnabled: overrides.analysisEnabled ?? true,
       textEnabled: overrides.textEnabled ?? false,
       awarenessNotify: overrides.awarenessNotify ?? true,
@@ -207,7 +207,6 @@ it.layer(NodeServices.layer)("CooperationService", (it) => {
           threadId: THREAD_A,
           expectedVersion: 1,
           featureTopic: "billing",
-          relationship: "unspecified",
           analysisEnabled: false,
           textEnabled: false,
           awarenessNotify: false,
@@ -234,6 +233,8 @@ it.layer(NodeServices.layer)("CooperationService", (it) => {
       expect(prompt).toContain("rewrite invoices");
       expect(prompt).not.toContain("abc123");
       expect(prompt).not.toContain("ada private text");
+      // No related-thread link between the two, so their relationship is unknown.
+      expect(prompt).toContain('"relationship":"unspecified"');
 
       expect(yield* cooperation.latestSummaryForThread(THREAD_B)).toMatchObject({
         summary: "Ada is adding refunds.",
@@ -267,6 +268,27 @@ it.layer(NodeServices.layer)("CooperationService", (it) => {
         cooperation.resolveItem(ADA, { itemId: admitted.itemId, action: "dismiss" }),
       );
       expect(again.reason).toBe("conflict");
+    }).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect("tells the analyst how the owners linked the pair", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const cooperation = yield* CooperationService;
+      const sql = yield* SqlClient.SqlClient;
+      yield* appendMessage(THREAD_A, "a");
+      yield* appendMessage(THREAD_B, "b");
+      yield* consent(OWNER_MEMBER_ID, THREAD_A);
+      yield* consent(ADA, THREAD_B);
+      // Ada linked her thread to A; the link counts in either direction.
+      yield* sql`
+        INSERT INTO projection_thread_related_links (thread_id, related_thread_id, relationship, linked_at)
+        VALUES (${THREAD_B}, ${THREAD_A}, 'alternative', '2026-10-01T00:00:00.000Z')
+      `;
+
+      yield* cooperation.analyzeThread(THREAD_A, "manual");
+
+      expect(harness.prompts[0]).toContain('"relationship":"alternative"');
     }).pipe(Effect.provide(harness.layer));
   });
 

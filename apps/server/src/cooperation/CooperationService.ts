@@ -18,7 +18,6 @@ import {
   CooperationError,
   type CooperationInbox,
   type CooperationLastRun,
-  type CooperationRelationship,
   type CooperationResolveInput,
   type CooperationSettings,
   type CooperationSettingsUpdateInput,
@@ -57,6 +56,7 @@ import {
   EXPORTABLE_EVENT_TYPES,
   type ExportedEvent,
   type ExportGrant,
+  pairRelationship,
   toAnalystEvents,
   validateAnalystOutput,
 } from "./CooperationPolicy.ts";
@@ -134,7 +134,6 @@ interface SettingsRow {
   readonly threadId: string;
   readonly version: number;
   readonly featureTopic: string;
-  readonly relationship: string;
   readonly analysisEnabled: number;
   readonly textEnabled: number;
   readonly awarenessNotify: number;
@@ -161,14 +160,10 @@ const decodeCitations = Schema.decodeUnknownSync(CitationsJson);
 const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 const decodeEvent = Schema.decodeUnknownEffect(OrchestrationEvent);
 
-const toRelationship = (value: string): CooperationRelationship =>
-  value === "complementary" || value === "alternative" ? value : "unspecified";
-
 const defaultSettings = (threadId: ThreadId): CooperationSettings => ({
   threadId,
   version: 0,
   featureTopic: "",
-  relationship: "unspecified",
   analysisEnabled: false,
   textEnabled: false,
   awarenessNotify: false,
@@ -182,7 +177,6 @@ const toSettings = (threadId: ThreadId, row: SettingsRow | undefined): Cooperati
         threadId,
         version: row.version,
         featureTopic: row.featureTopic,
-        relationship: toRelationship(row.relationship),
         analysisEnabled: row.analysisEnabled === 1,
         textEnabled: row.textEnabled === 1,
         awarenessNotify: row.awarenessNotify === 1,
@@ -216,7 +210,6 @@ export const make = Effect.gen(function* () {
         thread_id AS "threadId",
         version,
         feature_topic AS "featureTopic",
-        relationship,
         analysis_enabled AS "analysisEnabled",
         text_enabled AS "textEnabled",
         awareness_notify AS "awarenessNotify",
@@ -333,7 +326,6 @@ export const make = Effect.gen(function* () {
           threadId: input.threadId,
           version: current.version + 1,
           featureTopic,
-          relationship: input.relationship,
           analysisEnabled: input.analysisEnabled,
           textEnabled: input.analysisEnabled && input.textEnabled,
           awarenessNotify: input.analysisEnabled && input.awarenessNotify,
@@ -341,18 +333,17 @@ export const make = Effect.gen(function* () {
         };
         yield* sql`
           INSERT INTO cooperation_thread_settings (
-            thread_id, version, feature_topic, relationship, analysis_enabled,
+            thread_id, version, feature_topic, analysis_enabled,
             text_enabled, awareness_notify, updated_by, updated_at
           )
           VALUES (
-            ${next.threadId}, ${next.version}, ${next.featureTopic}, ${next.relationship},
+            ${next.threadId}, ${next.version}, ${next.featureTopic},
             ${next.analysisEnabled ? 1 : 0}, ${next.textEnabled ? 1 : 0},
             ${next.awarenessNotify ? 1 : 0}, ${memberId}, ${next.updatedAt}
           )
           ON CONFLICT (thread_id) DO UPDATE SET
             version = excluded.version,
             feature_topic = excluded.feature_topic,
-            relationship = excluded.relationship,
             analysis_enabled = excluded.analysis_enabled,
             text_enabled = excluded.text_enabled,
             awareness_notify = excluded.awareness_notify,
@@ -383,11 +374,31 @@ export const make = Effect.gen(function* () {
         ownerMemberId: threadOwnerOf(shell),
         version: settings.version,
         featureTopic: settings.featureTopic,
-        relationship: settings.relationship,
         textEnabled: settings.textEnabled,
       };
       return { ok: true as const, shell, settings, grant };
     });
+
+  // Related-thread links (owned by the related-work feature) are the one
+  // record of how two threads relate.
+  const readPairRelationship = (firstId: ThreadId, secondId: ThreadId) =>
+    sql<{ readonly relationship: string }>`
+      SELECT relationship
+      FROM projection_thread_related_links
+      WHERE (thread_id = ${firstId} AND related_thread_id = ${secondId})
+        OR (thread_id = ${secondId} AND related_thread_id = ${firstId})
+    `.pipe(
+      Effect.map((rows) =>
+        pairRelationship(
+          rows.flatMap((row) =>
+            row.relationship === "complementary" || row.relationship === "alternative"
+              ? [row.relationship]
+              : [],
+          ),
+        ),
+      ),
+      internal("relationship read"),
+    );
 
   const sameGrant = (left: ExportGrant, right: ExportGrant) =>
     left.threadId === right.threadId &&
@@ -506,10 +517,10 @@ export const make = Effect.gen(function* () {
         ref,
         title: pair[ref].shell.title,
         featureTopic: pair[ref].grant.featureTopic,
-        relationship: pair[ref].grant.relationship,
         events: toAnalystEvents(ref, exported[ref]),
       });
       const { prompt } = buildCooperationAnalysisPrompt({
+        relationship: yield* readPairRelationship(firstId, secondId),
         threads: [analystThread("A"), analystThread("B")],
       });
       const output = yield* analyst.analyze({ prompt }).pipe(Effect.result);

@@ -14,7 +14,6 @@ export default Effect.gen(function* () {
       thread_id TEXT PRIMARY KEY,
       version INTEGER NOT NULL,
       feature_topic TEXT NOT NULL,
-      relationship TEXT NOT NULL,
       analysis_enabled INTEGER NOT NULL,
       text_enabled INTEGER NOT NULL,
       awareness_notify INTEGER NOT NULL,

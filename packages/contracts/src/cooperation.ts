@@ -20,14 +20,6 @@ export const COOPERATION_FEATURE_TOPIC_MAX_CHARS = 80;
 export const COOPERATION_SUMMARY_MAX_CHARS = 600;
 export const COOPERATION_NOTE_MAX_CHARS = 600;
 
-/** How a thread relates to other work on the same topic. Alternatives are never duplicates. */
-export const CooperationRelationship = Schema.Literals([
-  "unspecified",
-  "complementary",
-  "alternative",
-]);
-export type CooperationRelationship = typeof CooperationRelationship.Type;
-
 export const CooperationFeatureTopic = Schema.String.check(
   Schema.isMaxLength(COOPERATION_FEATURE_TOPIC_MAX_CHARS),
   Schema.isPattern(/^(?:|[A-Za-z][A-Za-z0-9 _-]*)$/),
@@ -38,7 +30,6 @@ export const CooperationSettings = Schema.Struct({
   threadId: ThreadId,
   version: NonNegativeInt,
   featureTopic: Schema.String,
-  relationship: CooperationRelationship,
   /** The thread's events may be exported to the configured analyst. */
   analysisEnabled: Schema.Boolean,
   /** Message text may be exported (redacted, bounded); otherwise metadata only. */
@@ -54,7 +45,6 @@ export const CooperationSettingsUpdateInput = Schema.Struct({
   /** Optimistic concurrency: the version the owner edited. */
   expectedVersion: NonNegativeInt,
   featureTopic: CooperationFeatureTopic,
-  relationship: CooperationRelationship,
   analysisEnabled: Schema.Boolean,
   textEnabled: Schema.Boolean,
   awarenessNotify: Schema.Boolean,

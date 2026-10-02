@@ -15,6 +15,7 @@ import {
   EXPORT_MAX_TEXT_CHARS,
   type ExportGrant,
   isInformationalNote,
+  pairRelationship,
   projectExportEvent,
   redactSecrets,
   validateAnalystOutput,
@@ -29,7 +30,6 @@ const grant = (overrides: Partial<ExportGrant> = {}): ExportGrant => ({
   ownerMemberId: OWNER_MEMBER_ID,
   version: 1,
   featureTopic: "billing",
-  relationship: "unspecified",
   textEnabled: false,
   ...overrides,
 });
@@ -216,5 +216,14 @@ describe("validateAnalystOutput", () => {
     expect(isInformationalNote("Thread A already added a retry helper.")).toBe(true);
     expect(isInformationalNote("Please implement the retry helper.")).toBe(false);
     expect(isInformationalNote("Uses api_key=xyz from env.")).toBe(false);
+  });
+});
+
+describe("pairRelationship", () => {
+  it("takes the owners' links in either direction and leaves disagreement unspecified", () => {
+    expect(pairRelationship([])).toBe("unspecified");
+    expect(pairRelationship(["complementary"])).toBe("complementary");
+    expect(pairRelationship(["alternative", "alternative"])).toBe("alternative");
+    expect(pairRelationship(["alternative", "complementary"])).toBe("unspecified");
   });
 });
