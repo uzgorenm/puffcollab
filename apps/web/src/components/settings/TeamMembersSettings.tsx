@@ -8,7 +8,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import { setPairingTokenOnUrl } from "../../pairingUrl";
+import { useRelayEnvironmentDiscovery } from "~/state/environments";
 import { useProjects } from "../../state/entities";
 import { memberEnvironment, useEnvironmentMembers } from "../../state/members";
 import { useEnvironmentQuery } from "../../state/query";
@@ -17,14 +17,29 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { toastManager } from "../ui/toast";
+import { resolveHostedPairingUrl } from "./pairingUrls";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 
 const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
-/** A teammate opens this link to sign in as the member. */
-function memberSignInUrl(credential: string): string | null {
-  if (window.location.protocol !== "http:" && window.location.protocol !== "https:") return null;
-  return setPairingTokenOnUrl(new URL("/pair", window.location.href), credential).toString();
+/** Builds the link a teammate opens to sign in; null when only the code can be shared. */
+type SignInUrlResolver = (credential: string) => string | null;
+
+/**
+ * The T3 Connect address of this environment, when the admin's client knows
+ * it. Its HTTPS tunnel is reachable from anywhere, so a teammate can sign in
+ * through the hosted app without being on the host's network.
+ */
+function useConnectSignInUrl(environmentId: EnvironmentId): SignInUrlResolver | null {
+  const discovery = useRelayEnvironmentDiscovery();
+  const httpBaseUrl = discovery.environments.get(environmentId)?.environment.endpoint.httpBaseUrl;
+  return useMemo(
+    () =>
+      httpBaseUrl === undefined
+        ? null
+        : (credential: string) => resolveHostedPairingUrl(httpBaseUrl, credential),
+    [httpBaseUrl],
+  );
 }
 
 function AddMemberRow({ environmentId }: { environmentId: EnvironmentId }) {
@@ -123,7 +138,15 @@ function ProjectMembershipToggle({
   );
 }
 
-function MemberRow({ environmentId, member }: { environmentId: EnvironmentId; member: Member }) {
+function MemberRow({
+  environmentId,
+  member,
+  resolveSignInUrl,
+}: {
+  environmentId: EnvironmentId;
+  member: Member;
+  resolveSignInUrl: SignInUrlResolver;
+}) {
   const issueCredential = useAtomCommand(memberEnvironment.issueCredential);
   const revokeAccess = useAtomCommand(memberEnvironment.revokeAccess);
   const removeMember = useAtomCommand(memberEnvironment.remove);
@@ -140,7 +163,11 @@ function MemberRow({ environmentId, member }: { environmentId: EnvironmentId; me
       toastManager.add({ type: "error", title: "Could not copy", description: error.message }),
   });
   const isOwner = member.memberId === OWNER_MEMBER_ID;
-  const signInUrl = credential ? memberSignInUrl(credential.credential) : null;
+  const resolveConnectSignInUrl = useConnectSignInUrl(environmentId);
+  const signInUrl = credential ? resolveSignInUrl(credential.credential) : null;
+  const connectSignInUrl =
+    credential && resolveConnectSignInUrl ? resolveConnectSignInUrl(credential.credential) : null;
+  const primaryValue = signInUrl ?? connectSignInUrl ?? credential?.credential ?? "";
 
   const handleIssue = async () => {
     const result = await issueCredential({ environmentId, input: { memberId: member.memberId } });
@@ -187,17 +214,24 @@ function MemberRow({ environmentId, member }: { environmentId: EnvironmentId; me
     >
       {credential ? (
         <div className="flex flex-wrap items-center gap-2 pt-2 text-xs">
-          <code className="min-w-0 truncate rounded bg-muted px-1.5 py-0.5">
-            {signInUrl ?? credential.credential}
-          </code>
-          <Button
-            size="xs"
-            variant="ghost-muted"
-            onClick={() => copyToClipboard(signInUrl ?? credential.credential)}
-          >
+          <code className="min-w-0 truncate rounded bg-muted px-1.5 py-0.5">{primaryValue}</code>
+          <Button size="xs" variant="ghost-muted" onClick={() => copyToClipboard(primaryValue)}>
             {isCopied ? "Copied" : "Copy"}
           </Button>
-          <span className="text-muted-foreground">One use, expires in 24 hours.</span>
+          {signInUrl !== null && connectSignInUrl !== null && connectSignInUrl !== signInUrl ? (
+            <Button
+              size="xs"
+              variant="ghost-muted"
+              onClick={() => copyToClipboard(connectSignInUrl)}
+            >
+              Copy T3 Connect link
+            </Button>
+          ) : null}
+          <span className="text-muted-foreground">
+            {signInUrl === null && connectSignInUrl === null
+              ? "A sign-in code: the teammate pastes it with this environment's address when adding it. One use, expires in 24 hours."
+              : "One use, expires in 24 hours."}
+          </span>
         </div>
       ) : null}
       {showProjects ? (
@@ -226,7 +260,13 @@ function MemberRow({ environmentId, member }: { environmentId: EnvironmentId; me
  * sign-in links, and choose which projects each member works in. Admins
  * see every project.
  */
-export function TeamMembersSettings({ environmentId }: { environmentId: EnvironmentId | null }) {
+export function TeamMembersSettings({
+  environmentId,
+  resolveSignInUrl,
+}: {
+  environmentId: EnvironmentId | null;
+  resolveSignInUrl: SignInUrlResolver;
+}) {
   const { members } = useEnvironmentMembers(environmentId);
   const activeMembers = useMemo(
     () => [...members.values()].filter((member) => member.removedAt === null),
@@ -237,7 +277,12 @@ export function TeamMembersSettings({ environmentId }: { environmentId: Environm
   return (
     <SettingsSection id="team-members" title="Team members">
       {activeMembers.map((member) => (
-        <MemberRow key={member.memberId} environmentId={environmentId} member={member} />
+        <MemberRow
+          key={member.memberId}
+          environmentId={environmentId}
+          member={member}
+          resolveSignInUrl={resolveSignInUrl}
+        />
       ))}
       <AddMemberRow environmentId={environmentId} />
     </SettingsSection>

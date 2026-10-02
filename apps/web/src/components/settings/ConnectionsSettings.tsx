@@ -555,6 +555,35 @@ function resolveCurrentOriginPairingUrl(credential: string): string {
   return setPairingTokenOnUrl(url, credential).toString();
 }
 
+/**
+ * The link another device or a teammate opens to pair with this environment:
+ * the chosen advertised endpoint, else the desktop's exposed endpoint, else
+ * this page's own origin when another machine can reach it. Null means only
+ * the raw code can be shared (for example the desktop app with network access
+ * off, whose page is not served over HTTP).
+ */
+function resolveShareablePairingUrl(input: {
+  readonly credential: string | undefined;
+  readonly endpoints: ReadonlyArray<AdvertisedEndpoint>;
+  readonly defaultEndpointKey: string | null;
+  readonly endpointUrl: string | null | undefined;
+}): string | null {
+  const { credential, endpointUrl } = input;
+  if (!credential) return null;
+  const endpoint = selectPairingEndpoint(input.endpoints, input.defaultEndpointKey);
+  if (endpoint) return resolveAdvertisedEndpointPairingUrl(endpoint, credential);
+  if (endpointUrl != null && endpointUrl !== "") {
+    return (
+      resolveHostedPairingUrl(endpointUrl, credential) ??
+      resolveDesktopPairingUrl(endpointUrl, credential)
+    );
+  }
+  const { protocol, hostname } = window.location;
+  return (protocol === "http:" || protocol === "https:") && !isLoopbackHostname(hostname)
+    ? resolveCurrentOriginPairingUrl(credential)
+    : null;
+}
+
 function isHostedAppPairingUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -613,23 +642,10 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
   const [qrEndpointId, setQrEndpointId] = useState<string | null>(null);
   const qrPanelId = useId();
 
-  const currentOriginPairingUrl = useMemo(
-    () => (credential ? resolveCurrentOriginPairingUrl(credential) : null),
-    [credential],
+  const shareablePairingUrl = useMemo(
+    () => resolveShareablePairingUrl({ credential, endpoints, defaultEndpointKey, endpointUrl }),
+    [credential, defaultEndpointKey, endpointUrl, endpoints],
   );
-  const hostedPairingUrl = useMemo(
-    () =>
-      credential && endpointUrl != null && endpointUrl !== ""
-        ? resolveHostedPairingUrl(endpointUrl, credential)
-        : null,
-    [endpointUrl, credential],
-  );
-  const endpointPairingUrl = useMemo(() => {
-    const endpoint = selectPairingEndpoint(endpoints, defaultEndpointKey);
-    return endpoint && credential
-      ? resolveAdvertisedEndpointPairingUrl(endpoint, credential)
-      : null;
-  }, [defaultEndpointKey, endpoints, credential]);
   const endpointCopyOptions = useMemo(() => {
     const options: Array<{
       readonly id: string;
@@ -656,13 +672,6 @@ const PairingLinkListRow = memo(function PairingLinkListRow({
     }
     return options;
   }, [endpoints, credential]);
-  const shareablePairingUrl =
-    endpointPairingUrl ??
-    (credential && endpointUrl != null && endpointUrl !== ""
-      ? (hostedPairingUrl ?? resolveDesktopPairingUrl(endpointUrl, credential))
-      : isLoopbackHostname(window.location.hostname)
-        ? null
-        : currentOriginPairingUrl);
   // Value of the copy attempt that last failed. The clipboard-failure reveal
   // dialog must show exactly what failed to copy, not the row's default URL.
   const [failedCopyValue, setFailedCopyValue] = useState<string | null>(null);
@@ -3699,7 +3708,17 @@ export function ConnectionsSettings() {
       {primarySettings}
       {currentSessionScopes?.includes(AuthAccessWriteScope) ? (
         <>
-          <TeamMembersSettings environmentId={primaryEnvironmentId} />
+          <TeamMembersSettings
+            environmentId={primaryEnvironmentId}
+            resolveSignInUrl={(credential) =>
+              resolveShareablePairingUrl({
+                credential,
+                endpoints: visibleDesktopAdvertisedEndpoints,
+                defaultEndpointKey: defaultDesktopAdvertisedEndpointKey,
+                endpointUrl: desktopServerExposureState?.endpointUrl,
+              })
+            }
+          />
           <CooperationAnalysisSettings />
         </>
       ) : null}
