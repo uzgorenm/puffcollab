@@ -63,6 +63,8 @@ export function redactSecrets(text: string): string {
       return "[redacted]";
     });
   }
+  // Strip control characters other than tab and newlines.
+  // eslint-disable-next-line no-control-regex
   return result.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
 }
 
