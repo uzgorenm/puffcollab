@@ -7,6 +7,7 @@ import {
   type ProjectId,
   type ProviderInteractionMode,
   type RuntimeMode,
+  type ThreadVisibility,
 } from "@t3tools/contracts";
 import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
 
@@ -42,6 +43,8 @@ export interface ProjectThreadStartTurnSpec {
   readonly startFromOrigin: boolean;
   /** Generated temp branch for worktree mode; unused for local mode. */
   readonly worktreeBranchName: string;
+  /** Puff Collab: start the thread shared with project members. Omitted means private. */
+  readonly visibility?: ThreadVisibility;
 }
 
 /**
@@ -76,6 +79,8 @@ export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpe
         branch: spec.branch,
         worktreePath: isWorktree ? null : spec.worktreePath,
         createdAt: spec.createdAt,
+        // Only sent when shared, so servers without teams see the same payload.
+        ...(spec.visibility === "shared" ? { visibility: spec.visibility } : {}),
       },
       ...(isWorktree
         ? {

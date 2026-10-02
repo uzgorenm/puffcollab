@@ -16,6 +16,7 @@ import {
   teamMemberName,
   threadRowMenuActionsForViewer,
 } from "./team-presentation";
+import { resolveNewThreadVisibility } from "../../state/new-thread-visibility";
 
 const member = (id: string, displayName: string): Member => ({
   memberId: MemberId.make(id),
@@ -135,5 +136,14 @@ describe("threadRowMenuActionsForViewer", () => {
       threadRowMenuActionsForViewer(actions, { isOwner: false, isAdmin }).map((a) => a.id);
     expect(ids(false)).toEqual(["new-thread-on-branch", "copy-thread-id"]);
     expect(ids(true)).toEqual(["new-thread-on-branch", "copy-thread-id", "archive", "delete"]);
+  });
+});
+
+describe("resolveNewThreadVisibility", () => {
+  it("prefers the explicit toggle, then a queued task's choice, else private", () => {
+    expect(resolveNewThreadVisibility(null, undefined)).toBe("private");
+    expect(resolveNewThreadVisibility(null, "shared")).toBe("shared");
+    expect(resolveNewThreadVisibility("private", "shared")).toBe("private");
+    expect(resolveNewThreadVisibility("shared", undefined)).toBe("shared");
   });
 });

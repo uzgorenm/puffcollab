@@ -140,6 +140,23 @@ describe("thread outbox", () => {
       decodeQueuedThreadMessage(JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message)))),
     ).toEqual(message);
   });
+  it("keeps a pending task's sharing choice through the queue, and reads older tasks as private", () => {
+    const creation = {
+      projectId: ProjectId.make("project-1"),
+      workspaceMode: "local" as const,
+      branch: null,
+      worktreePath: null,
+    };
+    const shared: QueuedThreadMessage = {
+      ...queuedMessage({ messageId: "shared-task", createdAt: "2026-09-06T12:00:00.000Z" }),
+      creation: { ...creation, visibility: "shared" },
+    };
+    const roundTrip = (message: QueuedThreadMessage) =>
+      decodeQueuedThreadMessage(JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message))));
+    expect(roundTrip(shared).creation?.visibility).toBe("shared");
+    const older = roundTrip({ ...shared, creation });
+    expect(older.creation?.visibility).toBeUndefined();
+  });
   it.each(["read", "json", "schema"] as const)(
     "recovers usable messages without permitting cleanup after a record %s failure",
     async (failure) => {

@@ -1038,6 +1038,7 @@ export function useThreadOutboxDrain(): void {
           branch: creation.branch,
           worktreePath: creation.worktreePath,
           startFromOrigin: creation.startFromOrigin ?? false,
+          ...(creation.visibility ? { visibility: creation.visibility } : {}),
           worktreeBranchName: buildTemporaryWorktreeBranchName(randomHex),
         }),
       });
