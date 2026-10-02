@@ -1118,6 +1118,26 @@ const makeWsRpcLayer = (
             ),
           ),
         );
+      // Thread terminals run in the owner's checkout, so only someone who may
+      // control the thread can open, attach to, or type into them.
+      const requireThreadTerminalControl = (method: string, threadId: string) =>
+        seesEveryProject
+          ? Effect.void
+          : threadAccess
+              .canControlThread(currentMemberId, ThreadId.make(threadId), "thread.turn.start")
+              .pipe(
+                Effect.orElseSucceed(() => false),
+                Effect.flatMap((allowed) =>
+                  allowed
+                    ? Effect.void
+                    : Effect.fail(
+                        new EnvironmentAuthorizationError({
+                          message: "Only the thread's owner can use its terminals.",
+                          requiredScope: requiredScopeForRpcMethod(method),
+                        }),
+                      ),
+                ),
+              );
       // Owner-only control and project/comment rules for every command a
       // client sends; see ThreadAccess.
       const authorizeClientCommand = (command: OrchestrationCommand) =>
@@ -3871,9 +3891,10 @@ const makeWsRpcLayer = (
         [WS_METHODS.worktreeSetupCancel]: (input) =>
           observeRpcEffect(
             WS_METHODS.worktreeSetupCancel,
-            worktreeSetupTracker
-              .cancel(input.threadId)
-              .pipe(Effect.map((cancelled) => ({ cancelled }))),
+            requireThreadTerminalControl(WS_METHODS.worktreeSetupCancel, input.threadId).pipe(
+              Effect.andThen(worktreeSetupTracker.cancel(input.threadId)),
+              Effect.map((cancelled) => ({ cancelled })),
+            ),
             { "rpc.aggregate": "vcs" },
           ),
         [WS_METHODS.vcsRefreshStatus]: (input) =>
@@ -3999,40 +4020,82 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "review" },
           ),
         [WS_METHODS.terminalOpen]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalOpen, terminalManager.open(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalOpen,
+            requireThreadTerminalControl(WS_METHODS.terminalOpen, input.threadId).pipe(
+              Effect.andThen(terminalManager.open(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalAttach]: (input) =>
           observeRpcStream(
             WS_METHODS.terminalAttach,
-            Stream.callback<TerminalAttachStreamEvent, TerminalError>((queue) =>
-              Effect.acquireRelease(
-                terminalManager.attachStream(input, (event) => Queue.offer(queue, event)),
-                (unsubscribe) => Effect.sync(unsubscribe),
+            Stream.unwrap(
+              requireThreadTerminalControl(WS_METHODS.terminalAttach, input.threadId).pipe(
+                Effect.as(
+                  Stream.callback<TerminalAttachStreamEvent, TerminalError>((queue) =>
+                    Effect.acquireRelease(
+                      terminalManager.attachStream(input, (event) => Queue.offer(queue, event)),
+                      (unsubscribe) => Effect.sync(unsubscribe),
+                    ),
+                  ),
+                ),
               ),
             ),
             { "rpc.aggregate": "terminal" },
           ),
         [WS_METHODS.terminalWrite]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalWrite, terminalManager.write(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalWrite,
+            requireThreadTerminalControl(WS_METHODS.terminalWrite, input.threadId).pipe(
+              Effect.andThen(terminalManager.write(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalResize]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalResize, terminalManager.resize(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalResize,
+            requireThreadTerminalControl(WS_METHODS.terminalResize, input.threadId).pipe(
+              Effect.andThen(terminalManager.resize(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalClear]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalClear, terminalManager.clear(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalClear,
+            requireThreadTerminalControl(WS_METHODS.terminalClear, input.threadId).pipe(
+              Effect.andThen(terminalManager.clear(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalRestart]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalRestart, terminalManager.restart(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalRestart,
+            requireThreadTerminalControl(WS_METHODS.terminalRestart, input.threadId).pipe(
+              Effect.andThen(terminalManager.restart(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalClose]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalClose, terminalManager.close(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalClose,
+            requireThreadTerminalControl(WS_METHODS.terminalClose, input.threadId).pipe(
+              Effect.andThen(terminalManager.close(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.subscribeTerminalEvents]: (_input) =>
           observeRpcStream(
             WS_METHODS.subscribeTerminalEvents,
