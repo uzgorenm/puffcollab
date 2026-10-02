@@ -16,6 +16,7 @@ import {
   MemberId,
   MessageId,
   NonNegativeInt,
+  ThreadCommentId,
   PositiveInt,
   ProjectId,
   ProviderItemId,
@@ -806,6 +807,21 @@ export type ThreadVisibility = typeof ThreadVisibility.Type;
 export const isThreadShared = (thread: { readonly visibility?: ThreadVisibility | undefined }) =>
   thread.visibility === "shared";
 
+export const THREAD_COMMENT_MAX_LENGTH = 4_000;
+
+/**
+ * A teammate's note on a thread. Comments are shown in the thread timeline
+ * for everyone who can see the thread and never reach the provider/agent.
+ */
+export const OrchestrationThreadComment = Schema.Struct({
+  id: ThreadCommentId,
+  // From the event's `metadata.actor`; the environment owner when absent.
+  authorId: MemberId,
+  text: TrimmedNonEmptyString.check(Schema.isMaxLength(THREAD_COMMENT_MAX_LENGTH)),
+  createdAt: IsoDateTime,
+});
+export type OrchestrationThreadComment = typeof OrchestrationThreadComment.Type;
+
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -864,6 +880,9 @@ export const OrchestrationThread = Schema.Struct({
   createdBy: Schema.optional(Schema.NullOr(MemberId)),
   // Who besides the owner can follow the thread. Missing means private.
   visibility: Schema.optional(ThreadVisibility),
+  // Teammates' comments, oldest first. Detail snapshots only; never sent to
+  // the provider. Optional so payloads from older servers still decode.
+  comments: Schema.optional(Schema.Array(OrchestrationThreadComment)),
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
@@ -1157,6 +1176,8 @@ const ThreadCreateCommand = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
   historyImport: Schema.optional(Schema.Literal(true)),
+  // Explicit opt-in to share with project members. Missing means private.
+  visibility: Schema.optional(ThreadVisibility),
 });
 
 const ThreadDeleteCommand = Schema.Struct({
@@ -1324,6 +1345,8 @@ const ThreadTurnStartBootstrapCreateThread = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
+  // See ThreadCreateCommand.visibility.
+  visibility: Schema.optional(ThreadVisibility),
 });
 
 const ThreadTurnStartBootstrapPrepareWorktree = Schema.Struct({
@@ -1450,6 +1473,33 @@ const ThreadSessionStopCommand = Schema.Struct({
   onlyIfSettled: Schema.optional(Schema.Boolean),
 });
 
+// Owner-only: who besides the owner can follow the thread.
+const ThreadVisibilitySetCommand = Schema.Struct({
+  type: Schema.Literal("thread.visibility.set"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  visibility: ThreadVisibility,
+});
+
+// Anyone who can see the thread may comment. The author comes from the
+// authenticated session, never from the command.
+const ThreadCommentAddCommand = Schema.Struct({
+  type: Schema.Literal("thread.comment.add"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  commentId: ThreadCommentId,
+  text: TrimmedNonEmptyString.check(Schema.isMaxLength(THREAD_COMMENT_MAX_LENGTH)),
+  createdAt: IsoDateTime,
+});
+
+// Authors delete their own comments; admins may delete any.
+const ThreadCommentDeleteCommand = Schema.Struct({
+  type: Schema.Literal("thread.comment.delete"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  commentId: ThreadCommentId,
+});
+
 const DispatchableClientOrchestrationCommand = Schema.Union([
   ProjectCreateCommand,
   ProjectMetaUpdateCommand,
@@ -1480,6 +1530,9 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadCheckpointRevertCommand,
   ThreadConversationRevertCommand,
   ThreadSessionStopCommand,
+  ThreadVisibilitySetCommand,
+  ThreadCommentAddCommand,
+  ThreadCommentDeleteCommand,
 ]);
 export type DispatchableClientOrchestrationCommand =
   typeof DispatchableClientOrchestrationCommand.Type;
@@ -1514,6 +1567,9 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadCheckpointRevertCommand,
   ThreadConversationRevertCommand,
   ThreadSessionStopCommand,
+  ThreadVisibilitySetCommand,
+  ThreadCommentAddCommand,
+  ThreadCommentDeleteCommand,
 ]);
 export type ClientOrchestrationCommand = typeof ClientOrchestrationCommand.Type;
 
@@ -1747,6 +1803,9 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.proposed-plan-upserted",
   "thread.turn-diff-completed",
   "thread.activity-appended",
+  "thread.visibility-set",
+  "thread.comment-added",
+  "thread.comment-deleted",
 ]);
 export type OrchestrationEventType = typeof OrchestrationEventType.Type;
 
@@ -1800,6 +1859,8 @@ export const ThreadCreatedPayload = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  // Absent on threads created before sharing existed: private.
+  visibility: Schema.optional(ThreadVisibility),
 });
 
 export const ThreadDeletedPayload = Schema.Struct({
@@ -2026,6 +2087,26 @@ export const ThreadActivityAppendedPayload = Schema.Struct({
   activity: OrchestrationThreadActivity,
 });
 
+export const ThreadVisibilitySetPayload = Schema.Struct({
+  threadId: ThreadId,
+  visibility: ThreadVisibility,
+  updatedAt: IsoDateTime,
+});
+
+// The author is the event's `metadata.actor` (environment owner when absent).
+export const ThreadCommentAddedPayload = Schema.Struct({
+  threadId: ThreadId,
+  commentId: ThreadCommentId,
+  text: TrimmedNonEmptyString,
+  createdAt: IsoDateTime,
+});
+
+export const ThreadCommentDeletedPayload = Schema.Struct({
+  threadId: ThreadId,
+  commentId: ThreadCommentId,
+  deletedAt: IsoDateTime,
+});
+
 /**
  * Which client connection dispatched the command that produced an event.
  * Stamped by the orchestration engine on client-dispatched commands; absent on
@@ -2239,6 +2320,21 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.activity-appended"),
     payload: ThreadActivityAppendedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.visibility-set"),
+    payload: ThreadVisibilitySetPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.comment-added"),
+    payload: ThreadCommentAddedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.comment-deleted"),
+    payload: ThreadCommentDeletedPayload,
   }),
 ]);
 export type OrchestrationEvent = typeof OrchestrationEvent.Type;

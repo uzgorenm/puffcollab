@@ -149,6 +149,9 @@ export type AuthSessionId = typeof AuthSessionId.Type;
 /** An environment-level team member (Puff Collab). See `members.ts`. */
 export const MemberId = makeEntityId("MemberId");
 export type MemberId = typeof MemberId.Type;
+/** A teammate's comment on a thread (Puff Collab). Comments never reach the agent. */
+export const ThreadCommentId = makeEntityId("ThreadCommentId");
+export type ThreadCommentId = typeof ThreadCommentId.Type;
 export const RpcClientId = NonNegativeInt.pipe(Schema.brand("RpcClientId"));
 export type RpcClientId = typeof RpcClientId.Type;
 
