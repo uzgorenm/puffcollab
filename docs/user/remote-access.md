@@ -205,6 +205,11 @@ An admin opens **Settings → Connections → Team members**, adds a member, and
 sends them the one-time **Sign-in link** (it expires after 24 hours). The
 environment owner is always an admin.
 
+To sign in from the mobile app, paste the sign-in link into **Add environment**
+(or enter the server address with the credential as the pairing code). The
+link must use an address the phone can reach, not `localhost`. Adding and
+removing members stays on web and desktop; mobile lists them in Team overview.
+
 Members see only the projects they created or were added to; use **Projects**
 on a member's row to choose them. Admins see every project. Messages written by
 someone else show their name above the message.
@@ -261,6 +266,15 @@ Findings for your thread appear under **For you**. Admitting a note adds it to
 your composer, where you can edit it before sending; approving a proposed
 message sends it to your agent. Nothing reaches an agent without its owner's
 decision.
+
+### On mobile
+
+In a team environment, a thread's header has a **Team** button. It holds the
+thread's sharing, related threads, cooperation analysis, and notes waiting for
+you, and leads to the project's team overview. The toggle above the new-thread
+composer chooses **Private** or **Shared with project**. On a teammate's thread
+the composer becomes a comment box. Choosing the analysis model stays on web
+and desktop.
 
 ## Using the Desktop App as a Remote Only
 
