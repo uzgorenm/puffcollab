@@ -1,4 +1,4 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isRelatedThreadOwner,
   type RelatedThreadStatus,
@@ -17,6 +17,7 @@ import { GitCompareArrowsIcon, Link2Icon, Link2OffIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { type ComposerThreadTarget, useComposerThreadDraft } from "~/composerDraftStore";
+import { useRelatedWorkReviewStore } from "~/relatedWorkReviewStore";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useThreadDetail } from "~/state/entities";
 import { useEnvironmentMembers } from "~/state/members";
@@ -173,10 +174,16 @@ function SuggestionRow(props: {
 
 /**
  * Related threads in the thread header: linked threads for everyone who can
- * see this thread, plus suggestions and link/unlink for its owner.
+ * see this thread, plus suggestions and link/unlink for its owner. Right after
+ * the owner shares the thread it opens by itself when there is something to
+ * link.
  */
 export function RelatedThreadsControl(props: { environmentId: EnvironmentId; threadId: ThreadId }) {
-  const thread = useThreadDetail(scopeThreadRef(props.environmentId, props.threadId));
+  const threadRef = scopeThreadRef(props.environmentId, props.threadId);
+  const threadKey = scopedThreadKey(threadRef);
+  const thread = useThreadDetail(threadRef);
+  const reviewRequested = useRelatedWorkReviewStore((state) => state.threadKeys.has(threadKey));
+  const clearReview = useRelatedWorkReviewStore((state) => state.clear);
   const { members, currentMemberId } = useEnvironmentMembers(props.environmentId);
   const resolved = useResolvedRelatedThreads(props.environmentId, thread);
   const ownerName = useOwnerName(props.environmentId);
@@ -193,13 +200,22 @@ export function RelatedThreadsControl(props: { environmentId: EnvironmentId; thr
     () => new Set(resolved.map((entry) => entry.link.relatedThreadId)),
     [resolved],
   );
-  // Only ask for suggestions while the owner has the popover open.
+  // Only ask for suggestions while the owner has the popover open or just
+  // shared the thread.
   const suggestions = useRelatedWorkSuggestions({
-    environmentId: open && isOwner ? props.environmentId : null,
+    environmentId: (open || reviewRequested) && isOwner ? props.environmentId : null,
     projectId: thread?.projectId ?? null,
     text: draftText,
     excludeThreadId: props.threadId,
   }).filter((suggestion) => !linkedIds.has(suggestion.threadId));
+
+  // Opens by itself right after sharing, once there is something to link;
+  // closing it ends the review.
+  const popoverOpen = open || (reviewRequested && isOwner && suggestions.length > 0);
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) clearReview(threadKey);
+  };
 
   // Single-person environments have nobody's work to relate to.
   if (thread === null || (resolved.length === 0 && !(isOwner && members.size > 1))) return null;
@@ -210,7 +226,7 @@ export function RelatedThreadsControl(props: { environmentId: EnvironmentId; thr
   });
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={popoverOpen} onOpenChange={onOpenChange}>
       <PopoverTrigger
         render={
           <Button size="xs" variant="ghost" aria-label="Related threads" className="shrink-0" />

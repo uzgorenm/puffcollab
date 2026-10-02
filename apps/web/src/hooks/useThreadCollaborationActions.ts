@@ -1,5 +1,8 @@
 import type { ScopedThreadRef, ThreadCommentId, ThreadVisibility } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { useCallback } from "react";
+
+import { useRelatedWorkReviewStore } from "../relatedWorkReviewStore";
 
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -20,13 +23,20 @@ export function useThreadCollaborationActions() {
     label: "Delete comment",
   });
 
+  const requestRelatedWorkReview = useRelatedWorkReviewStore((state) => state.request);
   const setThreadVisibility = useCallback(
-    (target: ScopedThreadRef, visibility: ThreadVisibility) =>
-      setVisibilityMutation({
+    async (target: ScopedThreadRef, visibility: ThreadVisibility) => {
+      const result = await setVisibilityMutation({
         environmentId: target.environmentId,
         input: { threadId: target.threadId, visibility },
-      }),
-    [setVisibilityMutation],
+      });
+      // Newly shared: offer teammates' possibly related threads to link.
+      if (visibility === "shared" && result._tag === "Success") {
+        requestRelatedWorkReview(scopedThreadKey(target));
+      }
+      return result;
+    },
+    [requestRelatedWorkReview, setVisibilityMutation],
   );
   const addThreadComment = useCallback(
     (target: ScopedThreadRef, text: string) =>
