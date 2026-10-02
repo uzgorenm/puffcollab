@@ -132,6 +132,7 @@ export function applyThreadDetailEvent(
           unsettledAt: null,
           activeOrderKey: null,
           autoSettleDisabledAt: null,
+          ...(event.metadata.actor !== undefined ? { createdBy: event.metadata.actor } : {}),
           snoozedUntil: null,
           snoozedAt: null,
           deletedAt: null,
@@ -399,6 +400,7 @@ export function applyThreadDetailEvent(
         streaming: event.payload.streaming,
         createdAt: event.payload.createdAt,
         updatedAt: event.payload.updatedAt,
+        ...(event.metadata.actor !== undefined ? { createdBy: event.metadata.actor } : {}),
       };
 
       let found = false;

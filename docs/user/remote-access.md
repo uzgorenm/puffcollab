@@ -195,6 +195,20 @@ Include the diagnostic message and trace ID when reporting a persistent failure.
 For a connection that still fails after linking, check the date and time on both
 devices. For server version warnings, follow [Updating T3 Code](./updating.md).
 
+## Team members
+
+Several people can share one environment, each signing in as themselves. An
+admin opens **Settings → Connections → Team members**, adds a member, and
+sends them the one-time **Sign-in link** (it expires after 24 hours). The
+environment owner is always an admin.
+
+Members see only the projects they created or were added to; use **Projects**
+on a member's row to choose them. Admins see every project. Messages written by
+someone else show their name above the message.
+
+**Sign out** ends a member's sessions and unused links; **Remove** also stops
+them from signing in again. Their past messages keep their name.
+
 ## Using the Desktop App as a Remote Only
 
 If a computer should only drive work running elsewhere, turn off its local environment. In the

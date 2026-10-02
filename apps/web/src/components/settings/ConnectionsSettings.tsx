@@ -76,6 +76,7 @@ import {
 } from "./EnvironmentRow";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { LoadBalancingSettings } from "./LoadBalancingSettings";
+import { TeamMembersSettings } from "./TeamMembersSettings";
 import { GitHubRoutingSettings } from "./GitHubRoutingSettings";
 import { Input } from "../ui/input";
 import { CommandShortcut } from "../ui/command";
@@ -3695,6 +3696,9 @@ export function ConnectionsSettings() {
   return (
     <SettingsPageContainer width="wide">
       {primarySettings}
+      {currentSessionScopes?.includes(AuthAccessWriteScope) ? (
+        <TeamMembersSettings environmentId={primaryEnvironmentId} />
+      ) : null}
       <SettingsSection
         {...searchableSetting("remote-environments")}
         title="Environments"
