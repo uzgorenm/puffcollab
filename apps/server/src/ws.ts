@@ -161,6 +161,7 @@ import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
+import * as ThreadAccess from "./team/ThreadAccess.ts";
 import { requiredScopeForRpcMethod, requiredScopeForDeviceList } from "./auth/RpcAuthorization.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
@@ -362,7 +363,9 @@ export function isThreadDetailEvent(event: OrchestrationEvent): event is Extract
       | "thread.activity-appended"
       | "thread.turn-diff-completed"
       | "thread.reverted"
-      | "thread.session-set";
+      | "thread.session-set"
+      | "thread.comment-added"
+      | "thread.comment-deleted";
   }
 > {
   return (
@@ -371,7 +374,9 @@ export function isThreadDetailEvent(event: OrchestrationEvent): event is Extract
     event.type === "thread.activity-appended" ||
     event.type === "thread.turn-diff-completed" ||
     event.type === "thread.reverted" ||
-    event.type === "thread.session-set"
+    event.type === "thread.session-set" ||
+    event.type === "thread.comment-added" ||
+    event.type === "thread.comment-deleted"
   );
 }
 
@@ -546,6 +551,7 @@ const makeWsRpcLayer = (
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const threadDeletionReactor = yield* ThreadDeletionReactor;
       const teamAccess = yield* TeamAccess.TeamAccess;
+      const threadAccess = yield* ThreadAccess.ThreadAccess;
       const currentMemberId = currentMember.memberId;
       const analytics = yield* AnalyticsService.AnalyticsService;
       // Every command dispatched on this connection carries the connecting
@@ -1026,6 +1032,16 @@ const makeWsRpcLayer = (
           projectIds: new Set(),
         })),
       );
+      // Threads follow ThreadAccess: owner and admins always, project members
+      // once shared. A thread this member cannot see (any more) is sent as a
+      // removal, which is a no-op for clients that never had it; that is how
+      // un-sharing reaches followers live.
+      const loadViewer = loadProjectVisibility.pipe(
+        Effect.map((projects): ThreadAccess.ThreadViewer => ({
+          memberId: currentMemberId,
+          projects,
+        })),
+      );
       const filterVisibleShellEvents = (
         events: ReadonlyArray<OrchestrationShellStreamEvent>,
       ): Effect.Effect<ReadonlyArray<OrchestrationShellStreamEvent>> =>
@@ -1034,36 +1050,109 @@ const makeWsRpcLayer = (
           (event) => event.kind === "project-upserted" || event.kind === "thread-upserted",
         )
           ? Effect.succeed(events)
-          : loadProjectVisibility.pipe(
-              Effect.map((visibility) =>
-                events.filter((event) =>
-                  event.kind === "project-upserted"
-                    ? TeamAccess.canSeeProject(visibility, event.project.id)
-                    : event.kind === "thread-upserted"
-                      ? TeamAccess.canSeeProject(visibility, event.thread.projectId)
-                      : true,
-                ),
+          : loadViewer.pipe(
+              Effect.map((viewer) =>
+                events.flatMap((event): ReadonlyArray<OrchestrationShellStreamEvent> => {
+                  if (event.kind === "project-upserted") {
+                    return TeamAccess.canSeeProject(viewer.projects, event.project.id)
+                      ? [event]
+                      : [];
+                  }
+                  if (event.kind === "thread-upserted") {
+                    return ThreadAccess.canViewerSeeThread(viewer, event.thread)
+                      ? [event]
+                      : [
+                          {
+                            kind: "thread-removed",
+                            sequence: event.sequence,
+                            threadId: event.thread.id,
+                          },
+                        ];
+                  }
+                  return [event];
+                }),
               ),
+            );
+      const filterForViewer = <
+        S extends Parameters<typeof ThreadAccess.filterSnapshotForViewer>[0],
+      >(
+        snapshot: S,
+      ): Effect.Effect<S> =>
+        seesEveryProject
+          ? Effect.succeed(snapshot)
+          : loadViewer.pipe(
+              Effect.map((viewer) => ThreadAccess.filterSnapshotForViewer(snapshot, viewer)),
             );
       const loadVisibleShellSnapshot = projectionSnapshotQuery
         .getShellSnapshot()
-        .pipe(
-          Effect.flatMap((snapshot) =>
-            seesEveryProject
-              ? Effect.succeed(snapshot)
-              : loadProjectVisibility.pipe(
-                  Effect.map((visibility) =>
-                    TeamAccess.filterByProjectVisibility(snapshot, visibility),
-                  ),
-                ),
-          ),
-        );
+        .pipe(Effect.flatMap(filterForViewer));
       const canSeeThread = (threadId: ThreadId) =>
         seesEveryProject
           ? Effect.succeed(true)
           : teamAccess
               .canSeeThread(currentMemberId, threadId)
               .pipe(Effect.orElseSucceed(() => false));
+      // Ends a follower's thread subscription when they lose access: the owner
+      // un-shares it, or their project membership/access changes.
+      const threadAccessLost = (threadId: ThreadId) =>
+        Stream.merge(
+          orchestrationEngine.streamDomainEvents.pipe(
+            Stream.filter(
+              (event) =>
+                event.type === "thread.visibility-set" && event.payload.threadId === threadId,
+            ),
+          ),
+          teamAccess.visibilityChanges.pipe(
+            Stream.filter((memberId) => memberId === currentMemberId),
+          ),
+        ).pipe(
+          Stream.mapEffect(() => canSeeThread(threadId)),
+          Stream.filter((visible) => !visible),
+          Stream.runHead,
+          Effect.flatMap(() =>
+            Effect.fail(
+              new OrchestrationGetSnapshotError({
+                message: `Thread ${threadId} was not found`,
+                cause: threadId,
+              }),
+            ),
+          ),
+        );
+      // Thread terminals run in the owner's checkout, so only someone who may
+      // control the thread can open, attach to, or type into them.
+      const requireThreadTerminalControl = (method: string, threadId: string) =>
+        seesEveryProject
+          ? Effect.void
+          : threadAccess
+              .canControlThread(currentMemberId, ThreadId.make(threadId), "thread.turn.start")
+              .pipe(
+                Effect.orElseSucceed(() => false),
+                Effect.flatMap((allowed) =>
+                  allowed
+                    ? Effect.void
+                    : Effect.fail(
+                        new EnvironmentAuthorizationError({
+                          message: "Only the thread's owner can use its terminals.",
+                          requiredScope: requiredScopeForRpcMethod(method),
+                        }),
+                      ),
+                ),
+              );
+      // Owner-only control and project/comment rules for every command a
+      // client sends; see ThreadAccess.
+      const authorizeClientCommand = (command: OrchestrationCommand) =>
+        threadAccess.authorizeCommand(currentMemberId, command).pipe(
+          Effect.mapError(
+            (cause) =>
+              new OrchestrationDispatchCommandError({
+                message:
+                  cause._tag === "ThreadAccessDeniedError"
+                    ? cause.message
+                    : "Failed to check thread access.",
+                cause,
+              }),
+          ),
+        );
 
       const coalesceShellEvents = (
         events: ReadonlyArray<ShellEvent>,
@@ -1533,6 +1622,9 @@ const makeWsRpcLayer = (
                 branch: bootstrap.createThread.branch,
                 worktreePath: bootstrap.createThread.worktreePath,
                 createdAt: bootstrap.createThread.createdAt,
+                ...(bootstrap.createThread.visibility !== undefined
+                  ? { visibility: bootstrap.createThread.visibility }
+                  : {}),
               });
               // The successful create is a fence in the engine command queue:
               // every delete for the prior incarnation committed before it.
@@ -2239,6 +2331,9 @@ const makeWsRpcLayer = (
             Effect.gen(function* () {
               yield* ProjectCloneTracker.rejectCommandsDuringClone(projectCloneTracker, command);
               const normalizedCommand = yield* normalizeDispatchCommand(command);
+              yield* authorizeClientCommand(normalizedCommand).pipe(
+                Effect.tapError(() => cleanupFailedUploadedAttachments(command, normalizedCommand)),
+              );
               // Archive removes the thread from the client, so this transport
               // closes its session and terminals after the command lands.
               // Settlement cleanup is driven by thread.settled events in the
@@ -2361,14 +2456,17 @@ const makeWsRpcLayer = (
               Effect.flatMap((result) =>
                 seesEveryProject
                   ? Effect.succeed(result)
-                  : loadProjectVisibility.pipe(
-                      Effect.map((visibility) => ({
-                        ...result,
-                        matches: result.matches.filter((match) =>
-                          TeamAccess.canSeeProject(visibility, match.projectId),
-                        ),
-                      })),
-                    ),
+                  : threadAccess
+                      .visibleThreadIds(
+                        currentMemberId,
+                        result.matches.map((match) => match.threadId),
+                      )
+                      .pipe(
+                        Effect.map((visible) => ({
+                          ...result,
+                          matches: result.matches.filter((match) => visible.has(match.threadId)),
+                        })),
+                      ),
               ),
               Effect.mapError(
                 (cause) =>
@@ -2556,15 +2654,7 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot,
             projectionSnapshotQuery.getArchivedShellSnapshot().pipe(
-              Effect.flatMap((snapshot) =>
-                seesEveryProject
-                  ? Effect.succeed(snapshot)
-                  : loadProjectVisibility.pipe(
-                      Effect.map((visibility) =>
-                        TeamAccess.filterByProjectVisibility(snapshot, visibility),
-                      ),
-                    ),
-              ),
+              Effect.flatMap(filterForViewer),
               Effect.tapError((cause) =>
                 Effect.logError("orchestration archived shell snapshot load failed", { cause }),
               ),
@@ -2745,7 +2835,13 @@ const makeWsRpcLayer = (
                 }),
                 afterSnapshot,
               );
-            }),
+            }).pipe(
+              Effect.map((stream) =>
+                seesEveryProject
+                  ? stream
+                  : stream.pipe(Stream.interruptWhen(threadAccessLost(input.threadId))),
+              ),
+            ),
             { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.serverProbe]: (_input) =>
@@ -3795,9 +3891,10 @@ const makeWsRpcLayer = (
         [WS_METHODS.worktreeSetupCancel]: (input) =>
           observeRpcEffect(
             WS_METHODS.worktreeSetupCancel,
-            worktreeSetupTracker
-              .cancel(input.threadId)
-              .pipe(Effect.map((cancelled) => ({ cancelled }))),
+            requireThreadTerminalControl(WS_METHODS.worktreeSetupCancel, input.threadId).pipe(
+              Effect.andThen(worktreeSetupTracker.cancel(input.threadId)),
+              Effect.map((cancelled) => ({ cancelled })),
+            ),
             { "rpc.aggregate": "vcs" },
           ),
         [WS_METHODS.vcsRefreshStatus]: (input) =>
@@ -3923,40 +4020,82 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "review" },
           ),
         [WS_METHODS.terminalOpen]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalOpen, terminalManager.open(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalOpen,
+            requireThreadTerminalControl(WS_METHODS.terminalOpen, input.threadId).pipe(
+              Effect.andThen(terminalManager.open(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalAttach]: (input) =>
           observeRpcStream(
             WS_METHODS.terminalAttach,
-            Stream.callback<TerminalAttachStreamEvent, TerminalError>((queue) =>
-              Effect.acquireRelease(
-                terminalManager.attachStream(input, (event) => Queue.offer(queue, event)),
-                (unsubscribe) => Effect.sync(unsubscribe),
+            Stream.unwrap(
+              requireThreadTerminalControl(WS_METHODS.terminalAttach, input.threadId).pipe(
+                Effect.as(
+                  Stream.callback<TerminalAttachStreamEvent, TerminalError>((queue) =>
+                    Effect.acquireRelease(
+                      terminalManager.attachStream(input, (event) => Queue.offer(queue, event)),
+                      (unsubscribe) => Effect.sync(unsubscribe),
+                    ),
+                  ),
+                ),
               ),
             ),
             { "rpc.aggregate": "terminal" },
           ),
         [WS_METHODS.terminalWrite]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalWrite, terminalManager.write(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalWrite,
+            requireThreadTerminalControl(WS_METHODS.terminalWrite, input.threadId).pipe(
+              Effect.andThen(terminalManager.write(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalResize]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalResize, terminalManager.resize(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalResize,
+            requireThreadTerminalControl(WS_METHODS.terminalResize, input.threadId).pipe(
+              Effect.andThen(terminalManager.resize(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalClear]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalClear, terminalManager.clear(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalClear,
+            requireThreadTerminalControl(WS_METHODS.terminalClear, input.threadId).pipe(
+              Effect.andThen(terminalManager.clear(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalRestart]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalRestart, terminalManager.restart(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalRestart,
+            requireThreadTerminalControl(WS_METHODS.terminalRestart, input.threadId).pipe(
+              Effect.andThen(terminalManager.restart(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.terminalClose]: (input) =>
-          observeRpcEffect(WS_METHODS.terminalClose, terminalManager.close(input), {
-            "rpc.aggregate": "terminal",
-          }),
+          observeRpcEffect(
+            WS_METHODS.terminalClose,
+            requireThreadTerminalControl(WS_METHODS.terminalClose, input.threadId).pipe(
+              Effect.andThen(terminalManager.close(input)),
+            ),
+            {
+              "rpc.aggregate": "terminal",
+            },
+          ),
         [WS_METHODS.subscribeTerminalEvents]: (_input) =>
           observeRpcStream(
             WS_METHODS.subscribeTerminalEvents,

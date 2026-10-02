@@ -13,6 +13,7 @@ import {
   EnvironmentHttpApi,
   EnvironmentInternalError,
   type EnvironmentInternalErrorReason,
+  type EnvironmentOperationForbiddenReason,
   EnvironmentOperationForbiddenError,
   EnvironmentRequestInvalidError,
   type EnvironmentRequestInvalidReason,
@@ -135,7 +136,7 @@ export function failEnvironmentScopeRequired(requiredScope: AuthEnvironmentScope
   );
 }
 
-function failEnvironmentOperationForbidden(reason: "current_session_revoke_not_allowed") {
+export function failEnvironmentOperationForbidden(reason: EnvironmentOperationForbiddenReason) {
   return currentEnvironmentTraceId.pipe(
     Effect.flatMap((traceId) =>
       Effect.fail(

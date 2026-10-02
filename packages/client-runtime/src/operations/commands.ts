@@ -1,6 +1,7 @@
 import {
   CommandId,
   ORCHESTRATION_WS_METHODS,
+  ThreadCommentId,
   type ClientOrchestrationCommand,
 } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
@@ -58,6 +59,11 @@ export type RevertThreadCheckpointInput = CommandInput<"thread.checkpoint.revert
   readonly restoreFiles?: boolean;
 };
 export type StopThreadSessionInput = CommandInput<"thread.session.stop">;
+export type SetThreadVisibilityInput = CommandInput<"thread.visibility.set">;
+export type AddThreadCommentInput = Omit<CommandInput<"thread.comment.add">, "commentId"> & {
+  readonly commentId?: ThreadCommentId;
+};
+export type DeleteThreadCommentInput = CommandInput<"thread.comment.delete">;
 
 type DispatchTag = typeof ORCHESTRATION_WS_METHODS.dispatchCommand;
 type CommandEffect = Effect.Effect<
@@ -386,5 +392,46 @@ export const stopThreadSession: (input: StopThreadSessionInput) => CommandEffect
     type: "thread.session.stop",
     commandId: metadata.commandId,
     createdAt: metadata.createdAt,
+  });
+});
+
+// ── Puff Collab: sharing and comments ─────────────────────────────────
+
+/** Owner-only: share the thread with project members, or make it private again. */
+export const setThreadVisibility: (input: SetThreadVisibilityInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.setThreadVisibility",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.visibility.set",
+    commandId: yield* commandId(input),
+  });
+});
+
+/** Comment on a thread you can see. Comments never reach the agent. */
+export const addThreadComment: (input: AddThreadCommentInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.addThreadComment",
+)(function* (input) {
+  const metadata = yield* timestampedCommandMetadata(input);
+  const crypto = yield* Crypto.Crypto;
+  const commentId =
+    input.commentId ?? ThreadCommentId.make(yield* crypto.randomUUIDv4.pipe(Effect.orDie));
+  return yield* dispatch({
+    ...input,
+    type: "thread.comment.add",
+    commandId: metadata.commandId,
+    commentId,
+    createdAt: metadata.createdAt,
+  });
+});
+
+/** Delete one of your own comments (admins may delete any). */
+export const deleteThreadComment: (input: DeleteThreadCommentInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.deleteThreadComment",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.comment.delete",
+    commandId: yield* commandId(input),
   });
 });

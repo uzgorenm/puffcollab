@@ -1,4 +1,4 @@
-import type { ContextMenuItem } from "@t3tools/contracts";
+import type { ContextMenuItem, ThreadVisibility } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
 /**
@@ -27,6 +27,9 @@ export type ThreadActionMenuId =
   | "copy-path"
   | "copy-branch"
   | "copy-thread-id"
+  | "visibility"
+  | "visibility:private"
+  | "visibility:shared"
   | "archive"
   | "delete";
 
@@ -59,6 +62,17 @@ export interface ThreadActionMenuState {
     readonly titleRegeneration: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
+  /**
+   * Puff Collab: the viewer's relation to the thread. Followers only get the
+   * non-controlling items; admins may still archive or delete. Absent means
+   * the viewer owns the thread (single-user environments).
+   */
+  readonly collaboration?: {
+    readonly isOwner: boolean;
+    readonly isAdmin: boolean;
+    readonly teamEnabled: boolean;
+    readonly visibility: ThreadVisibility;
+  };
 }
 
 /**
@@ -67,6 +81,53 @@ export interface ThreadActionMenuState {
  * Each surface supplies state for the actions it supports.
  */
 export function buildThreadActionMenuItems(
+  state: ThreadActionMenuState,
+): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
+  const collaboration = state.collaboration;
+  const controls = collaboration?.isOwner ?? true;
+  const housekeeping = controls || collaboration?.isAdmin === true;
+  // Only the owner changes thread state; followers keep read-only items.
+  const ownerOnly = new Set<ThreadActionMenuId>([
+    "pin",
+    "unpin",
+    "settle",
+    "unsettle",
+    "snooze",
+    "unsnooze",
+    "rename",
+    "regenerate-title",
+    "auto-settle",
+  ]);
+  const items = buildAllThreadActionMenuItems(state).filter(
+    (item) =>
+      (controls || !ownerOnly.has(item.id)) &&
+      (housekeeping || (item.id !== "archive" && item.id !== "delete")),
+  );
+  if (!controls || collaboration?.teamEnabled !== true) return items;
+  const visibilityItem: ContextMenuItem<ThreadActionMenuId> = {
+    id: "visibility",
+    label: "Sharing",
+    icon: "users",
+    children: [
+      {
+        id: "visibility:private",
+        label: "Private (only you)",
+        checked: collaboration.visibility === "private",
+      },
+      {
+        id: "visibility:shared",
+        label: "Shared with project members",
+        checked: collaboration.visibility === "shared",
+      },
+    ],
+  };
+  const copyIndex = items.findIndex((item) => item.id === "copy");
+  return copyIndex === -1
+    ? [...items, visibilityItem]
+    : [...items.slice(0, copyIndex), visibilityItem, ...items.slice(copyIndex)];
+}
+
+function buildAllThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   return [

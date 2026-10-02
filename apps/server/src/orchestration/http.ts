@@ -15,10 +15,12 @@ import {
   failEnvironmentInternal,
   failEnvironmentInvalidRequest,
   failEnvironmentNotFound,
+  failEnvironmentOperationForbidden,
   requireEnvironmentScope,
 } from "../auth/http.ts";
 import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
 import * as TeamAccess from "../team/TeamAccess.ts";
+import * as ThreadAccess from "../team/ThreadAccess.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
 
@@ -30,6 +32,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
     const orchestrationEngine = yield* OrchestrationEngineService;
     const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
     const teamAccess = yield* TeamAccess.TeamAccess;
+    const threadAccess = yield* ThreadAccess.ThreadAccess;
 
     // The team member a request acts as; see TeamAccess.
     const resolveMember = (session: { readonly subject: string }) =>
@@ -39,11 +42,11 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
           TeamPersistenceError: (error) => failEnvironmentInternal("internal_error", error),
         }),
       );
-    const projectVisibilityFor = (session: { readonly subject: string }) =>
+    const viewerFor = (session: { readonly subject: string }) =>
       resolveMember(session).pipe(
         Effect.flatMap((member) =>
-          teamAccess
-            .projectVisibility(member.memberId)
+          threadAccess
+            .viewer(member.memberId)
             .pipe(Effect.catch((cause) => failEnvironmentInternal("internal_error", cause))),
         ),
       );
@@ -54,14 +57,14 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.orchestration.snapshot")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           const session = yield* requireEnvironmentScope(AuthOrchestrationReadScope);
-          const visibility = yield* projectVisibilityFor(session);
+          const viewer = yield* viewerFor(session);
           // Serve the lightweight command read model (thread bodies empty)
           // instead of the fully hydrated snapshot. Hydrating every message
           // and activity payload in the database has OOM-killed servers, and
           // the route's only consumer (the project CLI) reads projects alone —
           // UI clients load the shell and per-thread snapshots instead.
           return yield* projectionSnapshotQuery.getCommandReadModel().pipe(
-            Effect.map((readModel) => TeamAccess.filterByProjectVisibility(readModel, visibility)),
+            Effect.map((readModel) => ThreadAccess.filterSnapshotForViewer(readModel, viewer)),
             Effect.catch((cause) =>
               failEnvironmentInternal("orchestration_snapshot_failed", cause),
             ),
@@ -73,9 +76,9 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         Effect.fn("environment.orchestration.shellSnapshot")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
           const session = yield* requireEnvironmentScope(AuthOrchestrationReadScope);
-          const visibility = yield* projectVisibilityFor(session);
+          const viewer = yield* viewerFor(session);
           return yield* projectionSnapshotQuery.getShellSnapshot().pipe(
-            Effect.map((snapshot) => TeamAccess.filterByProjectVisibility(snapshot, visibility)),
+            Effect.map((snapshot) => ThreadAccess.filterSnapshotForViewer(snapshot, viewer)),
             Effect.catch((cause) =>
               failEnvironmentInternal("orchestration_snapshot_failed", cause),
             ),
@@ -136,6 +139,17 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
           );
           const normalizedCommand = yield* normalizeDispatchCommand(args.payload).pipe(
             Effect.catch(() => failEnvironmentInvalidRequest("invalid_command")),
+          );
+          // Same owner/visibility rules as the WebSocket transport.
+          yield* threadAccess.authorizeCommand(member.memberId, normalizedCommand).pipe(
+            Effect.tapError(() =>
+              cleanupFailedUploadedAttachments(args.payload, normalizedCommand),
+            ),
+            Effect.catchTags({
+              ThreadAccessDeniedError: () =>
+                failEnvironmentOperationForbidden("thread_access_denied"),
+              TeamPersistenceError: (error) => failEnvironmentInternal("internal_error", error),
+            }),
           );
           // The actor comes from the authenticated session, never from the body.
           const result = yield* orchestrationEngine

@@ -5,9 +5,11 @@ import {
   CommandId,
   ComposerContextId,
   EventId,
+  MemberId,
   MessageId,
   ProjectId,
   ProviderInstanceId,
+  ThreadCommentId,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -1707,5 +1709,66 @@ describe("applyThreadDetailEvent", () => {
       } as any);
       expect(result.kind).toBe("unchanged");
     });
+  });
+});
+
+describe("shared threads", () => {
+  const threadEvent = {
+    ...baseEventFields,
+    aggregateKind: "thread" as const,
+    aggregateId: baseThread.id,
+  };
+  const bob = MemberId.make("bob");
+  const commentAdded = {
+    ...threadEvent,
+    sequence: 2,
+    occurredAt: "2026-04-01T02:00:00.000Z",
+    metadata: { actor: bob },
+    type: "thread.comment-added" as const,
+    payload: {
+      threadId: baseThread.id,
+      commentId: ThreadCommentId.make("comment-1"),
+      text: "Nice",
+      createdAt: "2026-04-01T02:00:00.000Z",
+    },
+  };
+
+  it("applies visibility changes", () => {
+    const result = applyThreadDetailEvent(baseThread, {
+      ...threadEvent,
+      sequence: 1,
+      occurredAt: "2026-04-01T01:00:00.000Z",
+      type: "thread.visibility-set",
+      payload: {
+        threadId: baseThread.id,
+        visibility: "shared",
+        updatedAt: "2026-04-01T01:00:00.000Z",
+      },
+    });
+    expect(result.kind === "updated" && result.thread.visibility).toBe("shared");
+  });
+
+  it("adds comments once with their author, and removes them without touching messages", () => {
+    const added = applyThreadDetailEvent(baseThread, commentAdded);
+    if (added.kind !== "updated") throw new Error("expected update");
+    expect(added.thread.comments).toEqual([
+      { id: "comment-1", authorId: bob, text: "Nice", createdAt: "2026-04-01T02:00:00.000Z" },
+    ]);
+    expect(added.thread.messages).toEqual([]);
+    expect(added.thread.updatedAt).toBe(baseThread.updatedAt);
+    expect(applyThreadDetailEvent(added.thread, commentAdded).kind).toBe("unchanged");
+
+    const removed = applyThreadDetailEvent(added.thread, {
+      ...threadEvent,
+      sequence: 3,
+      occurredAt: "2026-04-01T03:00:00.000Z",
+      type: "thread.comment-deleted",
+      payload: {
+        threadId: baseThread.id,
+        commentId: ThreadCommentId.make("comment-1"),
+        deletedAt: "2026-04-01T03:00:00.000Z",
+      },
+    });
+    expect(removed.kind === "updated" && removed.thread.comments).toEqual([]);
   });
 });

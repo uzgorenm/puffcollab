@@ -62,6 +62,10 @@ import { ProjectionThreadActivity } from "../../persistence/Services/ProjectionT
 import { ProjectionThreadMessage } from "../../persistence/Services/ProjectionThreadMessages.ts";
 import { ProjectionThreadProposedPlan } from "../../persistence/Services/ProjectionThreadProposedPlans.ts";
 import { ProjectionThreadPullRequest } from "../../persistence/ProjectionThreadPullRequests.ts";
+import {
+  ProjectionThreadComment,
+  toOrchestrationThreadComment,
+} from "../../persistence/ProjectionThreadComments.ts";
 import { ProjectionThreadSession } from "../../persistence/Services/ProjectionThreadSessions.ts";
 import { ProjectionThread } from "../../persistence/Services/ProjectionThreads.ts";
 import {
@@ -592,6 +596,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           auto_settle_disabled_at AS "autoSettleDisabledAt",
           created_by AS "createdBy",
+          visibility,
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -641,6 +646,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           auto_settle_disabled_at AS "autoSettleDisabledAt",
           created_by AS "createdBy",
+          visibility,
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -717,6 +723,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           auto_settle_disabled_at AS "autoSettleDisabledAt",
           created_by AS "createdBy",
+          visibility,
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -1323,6 +1330,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           active_order_key AS "activeOrderKey",
           auto_settle_disabled_at AS "autoSettleDisabledAt",
           created_by AS "createdBy",
+          visibility,
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -1470,6 +1478,24 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         FROM projection_thread_pull_requests
         WHERE thread_id = ${threadId}
         ORDER BY linked_at ASC, number ASC
+      `,
+  });
+
+  // Teammates' comments (Puff Collab) ride along with client detail snapshots.
+  const listThreadCommentRowsByThread = SqlSchema.findAll({
+    Request: ThreadIdLookupInput,
+    Result: ProjectionThreadComment,
+    execute: ({ threadId }) =>
+      sql`
+        SELECT
+          comment_id AS "commentId",
+          thread_id AS "threadId",
+          author_id AS "authorId",
+          text,
+          created_at AS "createdAt"
+        FROM projection_thread_comments
+        WHERE thread_id = ${threadId}
+        ORDER BY created_at ASC, comment_id ASC
       `,
   });
 
@@ -2404,6 +2430,7 @@ pending_approval_requests AS (
                 activeOrderKey: row.activeOrderKey ?? null,
                 autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
                 ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
+                ...(row.visibility != null ? { visibility: row.visibility } : {}),
                 titleRegeneration: mapTitleRegeneration(row),
                 titleState: row.titleState,
                 deletedAt: row.deletedAt,
@@ -2651,6 +2678,7 @@ pending_approval_requests AS (
                   activeOrderKey: row.activeOrderKey ?? null,
                   autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
                   ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
+                  ...(row.visibility != null ? { visibility: row.visibility } : {}),
                   titleRegeneration: mapTitleRegeneration(row),
                   titleState: row.titleState,
                   deletedAt: row.deletedAt,
@@ -2813,6 +2841,7 @@ pending_approval_requests AS (
                         activeOrderKey: row.activeOrderKey ?? null,
                         autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
                         ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
+                        ...(row.visibility != null ? { visibility: row.visibility } : {}),
                         titleRegeneration: mapTitleRegeneration(row),
                         titleState: row.titleState,
                         session: sessionByThread.get(row.threadId) ?? null,
@@ -3000,6 +3029,7 @@ pending_approval_requests AS (
                   activeOrderKey: row.activeOrderKey ?? null,
                   autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
                   ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
+                  ...(row.visibility != null ? { visibility: row.visibility } : {}),
                   titleRegeneration: mapTitleRegeneration(row),
                   titleState: row.titleState,
                   session: sessionByThread.get(row.threadId) ?? null,
@@ -3350,6 +3380,7 @@ pending_approval_requests AS (
         activeOrderKey: threadRow.value.activeOrderKey ?? null,
         autoSettleDisabledAt: threadRow.value.autoSettleDisabledAt ?? null,
         ...(threadRow.value.createdBy != null ? { createdBy: threadRow.value.createdBy } : {}),
+        ...(threadRow.value.visibility != null ? { visibility: threadRow.value.visibility } : {}),
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         titleState: threadRow.value.titleState,
         session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
@@ -3621,6 +3652,18 @@ pending_approval_requests AS (
       if (Option.isNone(threadRow)) {
         return Option.none<OrchestrationThread>();
       }
+      // Provider-facing (raw) reads never carry comments.
+      const commentRows =
+        activityRead.mode === "client"
+          ? yield* listThreadCommentRowsByThread({ threadId }).pipe(
+              Effect.mapError(
+                toPersistenceSqlOrDecodeError(
+                  "ProjectionSnapshotQuery.getThreadDetailById:listComments:query",
+                  "ProjectionSnapshotQuery.getThreadDetailById:listComments:decodeRows",
+                ),
+              ),
+            )
+          : [];
 
       const thread = {
         id: threadRow.value.threadId,
@@ -3654,6 +3697,10 @@ pending_approval_requests AS (
         activeOrderKey: threadRow.value.activeOrderKey ?? null,
         autoSettleDisabledAt: threadRow.value.autoSettleDisabledAt ?? null,
         ...(threadRow.value.createdBy != null ? { createdBy: threadRow.value.createdBy } : {}),
+        ...(threadRow.value.visibility != null ? { visibility: threadRow.value.visibility } : {}),
+        ...(commentRows.length > 0
+          ? { comments: commentRows.map(toOrchestrationThreadComment) }
+          : {}),
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         titleState: threadRow.value.titleState,
         deletedAt: null,

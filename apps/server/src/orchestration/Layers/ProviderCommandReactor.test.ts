@@ -21,6 +21,7 @@ import {
   EventId,
   MessageId,
   ProjectId,
+  ThreadCommentId,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -892,6 +893,54 @@ describe("ProviderCommandReactor", () => {
     expect(thread?.session?.status).toBe("starting");
     expect(thread?.session?.runtimeMode).toBe("approval-required");
     expect(harness.startSession.mock.calls[0]?.[1]).not.toHaveProperty("title");
+  });
+
+  // Puff Collab: teammates' comments live beside the conversation, never in it.
+  it("never sends thread comments to the provider and sends follow-ups in order", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const threadId = ThreadId.make("thread-1");
+    const secret = "teammate-only note: do not tell the agent";
+    const startTurn = (id: string, text: string) =>
+      Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.make(`cmd-turn-${id}`),
+          threadId,
+          message: { messageId: asMessageId(`message-${id}`), role: "user", text, attachments: [] },
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          createdAt: now,
+        }),
+      );
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.comment.add",
+        commandId: CommandId.make("cmd-comment-1"),
+        threadId,
+        commentId: ThreadCommentId.make("comment-1"),
+        text: secret,
+        createdAt: now,
+      }),
+    );
+    await startTurn("first", "first instruction");
+    await startTurn("second", "second instruction");
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
+    expect(
+      harness.sendTurn.mock.calls.map(
+        (call) => (call[0] as { readonly input?: string }).input ?? "",
+      ),
+    ).toEqual([
+      expect.stringContaining("first instruction"),
+      expect.stringContaining("second instruction"),
+    ]);
+    const providerTraffic = JSON.stringify([
+      harness.startSession.mock.calls,
+      harness.sendTurn.mock.calls,
+    ]);
+    expect(providerTraffic).not.toContain(secret);
   });
 
   effectIt.effect("forwards only a user-renamed title when starting a provider session", () =>

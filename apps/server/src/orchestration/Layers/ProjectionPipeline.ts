@@ -1,6 +1,7 @@
 import {
   ApprovalRequestId,
   isImportedAgentSessionMessageId,
+  OWNER_MEMBER_ID,
   UserInputAttachmentAnswerPayload,
   type ChatAttachment,
   type OrchestrationEvent,
@@ -43,6 +44,7 @@ import {
   ProjectionTurnRepository,
 } from "../../persistence/Services/ProjectionTurns.ts";
 import { ProjectionThreadRepository } from "../../persistence/Services/ProjectionThreads.ts";
+import * as ProjectionThreadComments from "../../persistence/ProjectionThreadComments.ts";
 import { ProjectionPendingApprovalRepositoryLive } from "../../persistence/Layers/ProjectionPendingApprovals.ts";
 import { ProjectionProjectRepositoryLive } from "../../persistence/Layers/ProjectionProjects.ts";
 import { ProjectionStateRepositoryLive } from "../../persistence/Layers/ProjectionState.ts";
@@ -491,6 +493,8 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     const projectionThreadSessionRepository = yield* ProjectionThreadSessionRepository;
     const projectionTurnRepository = yield* ProjectionTurnRepository;
     const projectionPendingApprovalRepository = yield* ProjectionPendingApprovalRepository;
+    const projectionThreadCommentRepository =
+      yield* ProjectionThreadComments.ProjectionThreadCommentRepository;
 
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -621,6 +625,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           yield* projectionThreadPullRequestRepository.deleteByThreadId({
             threadId: event.payload.threadId,
           });
+          yield* projectionThreadCommentRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
           yield* projectionThreadRepository.upsert({
             threadId: event.payload.threadId,
             projectId: event.payload.projectId,
@@ -653,6 +660,41 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             hasActionableProposedPlan: 0,
             deletedAt: null,
             createdBy: event.metadata.actor ?? null,
+            visibility: event.payload.visibility ?? null,
+          });
+          return;
+
+        // Puff Collab shared threads. Comments are projected here rather than
+        // by a projector of their own so existing databases do not replay the
+        // whole event log to bootstrap a new projector cursor.
+        case "thread.visibility-set": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            visibility: event.payload.visibility,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.comment-added":
+          yield* projectionThreadCommentRepository.insert({
+            commentId: event.payload.commentId,
+            threadId: event.payload.threadId,
+            authorId: event.metadata.actor ?? OWNER_MEMBER_ID,
+            text: event.payload.text,
+            createdAt: event.payload.createdAt,
+          });
+          return;
+
+        case "thread.comment-deleted":
+          yield* projectionThreadCommentRepository.deleteById({
+            commentId: event.payload.commentId,
           });
           return;
 
@@ -2230,6 +2272,7 @@ export const OrchestrationProjectionPipelineLive = Layer.effect(
   Layer.provideMerge(ProjectionThreadMessageRepositoryLive),
   Layer.provideMerge(ProjectionThreadProposedPlanRepositoryLive),
   Layer.provideMerge(ProjectionThreadPullRequests.layer),
+  Layer.provideMerge(ProjectionThreadComments.layer),
   Layer.provideMerge(ProjectionThreadActivityRepositoryLive),
   Layer.provideMerge(ProjectionThreadSessionRepositoryLive),
   Layer.provideMerge(ProjectionTurnRepositoryLive),

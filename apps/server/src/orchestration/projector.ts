@@ -54,6 +54,7 @@ import {
   ThreadRevertedPayload,
   ThreadSessionSetPayload,
   ThreadTurnDiffCompletedPayload,
+  ThreadVisibilitySetPayload,
 } from "./Schemas.ts";
 
 type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
@@ -457,6 +458,7 @@ export function projectEvent(
             activeOrderKey: null,
             autoSettleDisabledAt: null,
             ...(event.metadata.actor !== undefined ? { createdBy: event.metadata.actor } : {}),
+            ...(payload.visibility !== undefined ? { visibility: payload.visibility } : {}),
             snoozedUntil: null,
             snoozedAt: null,
             deletedAt: null,
@@ -603,6 +605,17 @@ export function projectEvent(
           ...nextBase,
           threads: updateThread(nextBase.threads, payload.threadId, {
             autoSettleDisabledAt: payload.autoSettleDisabledAt,
+            updatedAt: payload.updatedAt,
+          }),
+        })),
+      );
+
+    case "thread.visibility-set":
+      return decodeForEvent(ThreadVisibilitySetPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            visibility: payload.visibility,
             updatedAt: payload.updatedAt,
           }),
         })),

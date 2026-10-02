@@ -134,6 +134,7 @@ import {
   ZapIcon,
 } from "lucide-react";
 import type {
+  OrchestrationThreadComment,
   ComposerContextId,
   ComposerContextRecord,
   KnownComposerContextRecord,
@@ -160,6 +161,7 @@ import { useFileContextMenuHandler } from "../../fileContextMenu";
 import { useProject, useThread } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
 import { type EnvironmentMembers, useEnvironmentMembers } from "../../state/members";
+import { ThreadCommentTimelineRow } from "../collab/ThreadCommentTimelineRow";
 import {
   CHAT_TIMELINE_ANCHOR_OFFSET,
   readTimelinePosition,
@@ -468,6 +470,8 @@ interface MessagesTimelineProps {
   loadEarlier?: CitationHistoryPage | null;
   /** Messages sent during the running turn. They render as ghost bubbles after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
+  /** Teammates' comments on the thread (Puff Collab), shown between messages. */
+  comments?: ReadonlyArray<OrchestrationThreadComment> | undefined;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   onRemoveQueuedMessage?: (id: string) => void;
@@ -526,6 +530,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   topFadeEnabled = false,
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
+  comments,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   onRemoveQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
@@ -789,6 +794,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         liveAgentTaskIds,
         worktreeSetup,
         queuedMessages,
+        comments,
       },
       previous?.threadKey === listIdentityKey && previous.workspaceRoot === workspaceRoot
         ? previous.projection
@@ -812,6 +818,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     liveAgentTaskIds,
     worktreeSetup,
     queuedMessages,
+    comments,
   ]);
   const rows = useStableRows(rawRows, listIdentityKey);
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
@@ -1752,6 +1759,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "thinking" ? <ThinkingTimelineRow /> : null}
       {row.kind === "worktree-setup" ? <WorktreeSetupTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
+      {row.kind === "thread-comment" ? <CommentTimelineRow row={row} /> : null}
     </div>
   );
 });
@@ -1953,6 +1961,18 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
 // inside a message are exposed below this level. Visually hidden and excluded
 // from selection so sighted users and copied text are unaffected.
 const MESSAGE_HEADING_LEVEL = 3;
+
+function CommentTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thread-comment" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <ThreadCommentTimelineRow
+      comment={row.comment}
+      members={ctx.members}
+      threadRef={ctx.threadRef}
+      timestampFormat={ctx.timestampFormat}
+    />
+  );
+}
 
 function MessageAuthorHeading({ children }: { children: string }) {
   return <h3 className="sr-only select-none">{children}</h3>;

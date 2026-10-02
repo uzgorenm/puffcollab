@@ -209,6 +209,19 @@ someone else show their name above the message.
 **Sign out** ends a member's sessions and unused links; **Remove** also stops
 them from signing in again. Their past messages keep their name.
 
+### Shared threads
+
+Threads are private to the member who started them (and admins) unless shared.
+Choose **Shared with project** under the composer when starting a thread, or
+change it later from the thread menu under **Sharing**. Project members then
+see the thread in their sidebar with your name and can follow it live.
+
+Only a thread's owner can instruct the agent, answer its approvals and
+questions, interrupt, rewind, or change the thread. Teammates comment instead;
+comments appear in the timeline for everyone following and are never sent to
+the agent. Admins can also stop, archive, or delete any thread, and only admins
+can delete a project.
+
 ## Using the Desktop App as a Remote Only
 
 If a computer should only drive work running elsewhere, turn off its local environment. In the

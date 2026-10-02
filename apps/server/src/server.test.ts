@@ -186,6 +186,7 @@ import { REPLAY_MARKER_MAX_AGE } from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
+import * as ThreadAccess from "./team/ThreadAccess.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -1245,7 +1246,11 @@ const buildAppUnderTest = (options?: {
           ),
         };
       }),
-      Layer.provideMerge(TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer()))),
+      Layer.provideMerge(
+        ThreadAccess.layer.pipe(
+          Layer.provideMerge(TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer()))),
+        ),
+      ),
       Layer.provideMerge(ServerSecretStore.layer),
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(
@@ -13556,6 +13561,12 @@ it.layer(NodeServices.layer)("team members", (it) => {
       makeDefaultOrchestrationThreadShell({
         id: ThreadId.make("thread-shared"),
         projectId: sharedProjectId,
+        visibility: "shared",
+      }),
+      // The owner's private thread in a project the member joins: still hidden.
+      makeDefaultOrchestrationThreadShell({
+        id: ThreadId.make("thread-owner-private"),
+        projectId: sharedProjectId,
       }),
       makeDefaultOrchestrationThreadShell({
         id: ThreadId.make("thread-private"),
@@ -13618,7 +13629,14 @@ it.layer(NodeServices.layer)("team members", (it) => {
 
       yield* Effect.scoped(
         withWsRpcClient(ownerWsUrl, (client) =>
-          client[ORCHESTRATION_WS_METHODS.dispatchCommand](metaUpdate("cmd-owner")),
+          Effect.andThen(
+            client[ORCHESTRATION_WS_METHODS.dispatchCommand](metaUpdate("cmd-owner")),
+            // Project commands need project membership.
+            client[WS_METHODS.projectMembersAdd]({
+              projectId: defaultProjectId,
+              memberId: member.memberId,
+            }),
+          ),
         ),
       );
       yield* Effect.scoped(
@@ -13628,6 +13646,39 @@ it.layer(NodeServices.layer)("team members", (it) => {
       );
 
       assert.deepEqual(actors, [OWNER_MEMBER_ID, member.memberId]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("rejects commands a member may not issue before they reach the engine", () =>
+    Effect.gen(function* () {
+      const dispatched: Array<string> = [];
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatched.push(command.type);
+                return { sequence: dispatched.length };
+              }),
+          },
+        },
+      });
+      const ownerWsUrl = yield* getWsServerUrl("/ws");
+      const { memberWsUrl } = yield* connectAsNewMember(ownerWsUrl, "edsger");
+      const error = yield* Effect.flip(
+        Effect.scoped(
+          withWsRpcClient(memberWsUrl, (client) =>
+            client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "project.delete",
+              commandId: CommandId.make("cmd-delete"),
+              projectId: defaultProjectId,
+            }),
+          ),
+        ),
+      );
+      assert.equal(error._tag, "OrchestrationDispatchCommandError");
+      assert.include(error.message, "Only an admin");
+      assert.deepEqual(dispatched, []);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

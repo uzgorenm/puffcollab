@@ -10,6 +10,7 @@ import {
   CommandId,
   IsoDateTime,
   MemberId,
+  ThreadVisibility,
   ModelSelection,
   NonNegativeInt,
   ProjectId,
@@ -54,6 +55,8 @@ export const ProjectionThread = Schema.Struct({
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   // Member who created the thread; see OrchestrationThread.createdBy.
   createdBy: Schema.optional(Schema.NullOr(MemberId)),
+  // See OrchestrationThread.visibility; null means private.
+  visibility: Schema.optional(Schema.NullOr(ThreadVisibility)),
   titleRegenerationRequestId: Schema.optional(Schema.NullOr(CommandId)),
   titleRegenerationStartedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
