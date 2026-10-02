@@ -78,6 +78,7 @@ import { useSelectedThreadRequests } from "../../state/use-selected-thread-reque
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { useThreadComposerState } from "../../state/use-thread-composer-state";
 import { threadEnvironment } from "../../state/threads";
+import { useThreadCollaboration } from "../../state/thread-collaboration";
 import { projectThreadContentPresentation } from "./threadContentPresentation";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
@@ -468,6 +469,15 @@ function ThreadRouteContent(
     [knownTerminalSessions, selectedThreadProject?.workspaceRoot],
   );
   const selectedThreadDetailWorktreePath = selectedThreadDetail?.worktreePath ?? null;
+  // Puff Collab: only the owner drives the thread; teammates follow and comment.
+  const collaboration = useThreadCollaboration(
+    selectedThread?.environmentId ?? null,
+    selectedThread,
+  );
+  const follower = useMemo(
+    () => (collaboration.isOwner ? null : { ownerName: collaboration.ownerName }),
+    [collaboration.isOwner, collaboration.ownerName],
+  );
   const handleReconnectEnvironment = useCallback(() => {
     if (!environmentId) {
       return;
@@ -995,9 +1005,12 @@ function ThreadRouteContent(
                 }
               : null
           }
-          activePendingApproval={requests.activePendingApproval}
+          follower={follower}
+          comments={selectedThreadDetail?.comments}
+          // Approvals and questions are the owner's to answer.
+          activePendingApproval={follower ? null : requests.activePendingApproval}
           respondingApprovalId={requests.respondingApprovalId}
-          activePendingUserInput={requests.activePendingUserInput}
+          activePendingUserInput={follower ? null : requests.activePendingUserInput}
           activePendingUserInputDrafts={requests.activePendingUserInputDrafts}
           activePendingUserInputAnswers={requests.activePendingUserInputAnswers}
           respondingUserInputId={requests.respondingUserInputId}

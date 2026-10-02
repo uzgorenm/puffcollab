@@ -13,6 +13,7 @@ import type {
   EnvironmentId,
   MessageId,
   OrchestrationMessageContext,
+  OrchestrationThreadComment,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -172,6 +173,11 @@ import {
   WORK_GROUP_TOGGLE_HEIGHT,
 } from "./thread-work-log";
 import { appendPendingThreadMessages, type PendingThreadFeedEntry } from "./pending-thread-feed";
+import { ThreadCommentRow } from "../team/ThreadCommentRow";
+import { insertThreadCommentEntries, type ThreadCommentFeedEntry } from "../team/team-presentation";
+
+/** Presented feed rows plus teammates' comments (Puff Collab). */
+type ThreadFeedListEntry = PendingThreadFeedEntry | ThreadCommentFeedEntry;
 import type { QueuedThreadMessage } from "../../state/thread-outbox-model";
 import { useMarkdownCodeHighlight } from "./markdownCodeHighlightState";
 import {
@@ -277,6 +283,8 @@ export interface ThreadFeedProps {
     readonly loading: boolean;
     readonly onLoadEarlier: () => void;
   } | null;
+  /** Teammates' comments (Puff Collab), shown between rows by time. */
+  readonly comments?: ReadonlyArray<OrchestrationThreadComment>;
 }
 
 function MessageAttachmentImage(props: {
@@ -1351,10 +1359,11 @@ function useMarkdownStyles(
 }
 
 function renderFeedEntry(
-  info: { item: PendingThreadFeedEntry; index: number },
+  info: { item: ThreadFeedListEntry; index: number },
   props: Pick<
     ThreadFeedProps,
     | "environmentId"
+    | "threadId"
     | "onUseArtifactTemplate"
     | "skills"
     | "dispatchingMessageId"
@@ -1392,6 +1401,16 @@ function renderFeedEntry(
 ) {
   const entry = info.item;
   const { markdownStyles, iconSubtleColor, userBubbleColor } = props;
+
+  if (entry.type === "thread-comment") {
+    return (
+      <ThreadCommentRow
+        environmentId={props.environmentId}
+        threadId={props.threadId}
+        comment={entry.comment}
+      />
+    );
+  }
 
   if (entry.type === "turn-fold") {
     return (
@@ -2449,19 +2468,23 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     return ids;
   }, [expandedWorkGroups]);
   const presentedFeed = useMemo(
-    () =>
-      appendPendingThreadMessages(
-        deriveThreadFeedPresentation(
+    (): ReadonlyArray<ThreadFeedListEntry> =>
+      insertThreadCommentEntries(
+        appendPendingThreadMessages(
+          deriveThreadFeedPresentation(
+            props.feed,
+            props.latestTurn,
+            expandedTurnIds,
+            expandedWorkGroupIds,
+            props.activeWorkStartedAt,
+          ),
           props.feed,
-          props.latestTurn,
-          expandedTurnIds,
-          expandedWorkGroupIds,
-          props.activeWorkStartedAt,
+          props.queuedMessages,
         ),
-        props.feed,
-        props.queuedMessages,
+        props.comments,
       ),
     [
+      props.comments,
       props.queuedMessages,
       expandedTurnIds,
       expandedWorkGroupIds,
@@ -2600,7 +2623,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
     }
   }, [settleDisclosureAfterLayout]);
 
-  const shouldRestoreVisibleContentPosition = useCallback((entry: ThreadFeedEntry) => {
+  const shouldRestoreVisibleContentPosition = useCallback((entry: ThreadFeedListEntry) => {
     const disclosureAnchorKey = disclosureAnchorKeyRef.current;
     return disclosureAnchorKey === null || entry.id === disclosureAnchorKey;
   }, []);
@@ -2713,7 +2736,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   // exact; message rows stay undefined and use LegendList's per-type running
   // average once one of their type has been measured.
   const getFixedItemSize = useCallback(
-    (entry: ThreadFeedEntry) => {
+    (entry: ThreadFeedListEntry) => {
       if (workRowSizing.fixedRowHeight === undefined) {
         return undefined;
       }
@@ -2747,7 +2770,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   // Disclosures can mount existing offscreen rows as well as new work rows.
   // Fade those in after movement; never retain removed rows over replacements.
   const renderItem = useCallback(
-    (info: { item: PendingThreadFeedEntry; index: number }) => (
+    (info: { item: ThreadFeedListEntry; index: number }) => (
       <Animated.View
         key={info.item.id}
         entering={disclosureToggleSettling ? THREAD_FEED_DISCLOSURE_ENTER_TRANSITION : undefined}
@@ -2755,6 +2778,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
         <ThreadMediaVisibility>
           {renderFeedEntry(info, {
             environmentId: props.environmentId,
+            threadId: props.threadId,
             dispatchingMessageId: props.dispatchingMessageId,
             onEditPendingMessage: props.onEditPendingMessage,
             copiedRowId,
