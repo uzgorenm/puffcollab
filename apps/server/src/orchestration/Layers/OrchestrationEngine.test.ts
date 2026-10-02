@@ -2217,4 +2217,102 @@ describe("OrchestrationEngine", () => {
 
     await system.dispose();
   });
+
+  it("persists owner-only related-thread links across a restart", async () => {
+    const createdAt = now();
+    const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-related-links-"));
+    const databasePath = NodePath.join(directory, "state.sqlite");
+    let system = await createOrchestrationSystem(databasePath);
+    const ada = MemberId.make("member-ada");
+    const projectId = asProjectId("project-related");
+    const threadId = ThreadId.make("thread-related-new");
+    const relatedThreadId = ThreadId.make("thread-related-old");
+    try {
+      await system.run(
+        system.engine.dispatch(
+          {
+            type: "project.create",
+            commandId: CommandId.make("cmd-related-project"),
+            projectId,
+            title: "Related",
+            workspaceRoot: "/tmp/project-related",
+            defaultModelSelection: null,
+            createdAt,
+          },
+          { actor: ada },
+        ),
+      );
+      for (const id of [relatedThreadId, threadId]) {
+        await system.run(
+          system.engine.dispatch(
+            {
+              type: "thread.create",
+              commandId: CommandId.make(`cmd-create-${id}`),
+              threadId: id,
+              projectId,
+              title: `Title of ${id}`,
+              modelSelection: {
+                instanceId: ProviderInstanceId.make("codex"),
+                model: "gpt-5-codex",
+              },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdAt,
+            },
+            { actor: ada },
+          ),
+        );
+      }
+      const link = {
+        type: "thread.related-thread.link",
+        commandId: CommandId.make("cmd-related-link"),
+        threadId,
+        relatedThreadId,
+        relationship: "alternative",
+      } as const;
+      // Another member cannot link Ada's thread.
+      await expect(
+        system.run(
+          system.engine.dispatch(
+            { ...link, commandId: CommandId.make("cmd-related-link-bob") },
+            { actor: MemberId.make("member-bob") },
+          ),
+        ),
+      ).rejects.toThrow();
+      await system.run(system.engine.dispatch(link, { actor: ada }));
+
+      const detail = await system.readThread(threadId);
+      const linkedThread = Option.getOrUndefined(detail);
+      expect(linkedThread?.relatedThreads).toEqual([
+        { relatedThreadId, relationship: "alternative", linkedAt: expect.any(String) },
+      ]);
+      // The link names the other thread only; its title is never copied.
+      expect(JSON.stringify(linkedThread?.relatedThreads)).not.toContain(
+        `Title of ${relatedThreadId}`,
+      );
+
+      // After a restart the command read model still knows the link, so the
+      // owner can unlink it.
+      await system.dispose();
+      system = await createOrchestrationSystem(databasePath);
+      await system.run(
+        system.engine.dispatch(
+          {
+            type: "thread.related-thread.unlink",
+            commandId: CommandId.make("cmd-related-unlink"),
+            threadId,
+            relatedThreadId,
+          },
+          { actor: ada },
+        ),
+      );
+      const afterUnlink = Option.getOrUndefined(await system.readThread(threadId));
+      expect(afterUnlink?.relatedThreads).toBeUndefined();
+    } finally {
+      await system.dispose();
+      await NodeFSP.rm(directory, { recursive: true, force: true });
+    }
+  });
 });

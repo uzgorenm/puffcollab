@@ -58,6 +58,7 @@ import { ThreadBackgroundLivenessService } from "../ThreadBackgroundLiveness.ts"
 import { ThreadPlanProgressService } from "../ThreadPlanProgress.ts";
 import { ProjectionProject } from "../../persistence/Services/ProjectionProjects.ts";
 import { ProjectionState } from "../../persistence/Services/ProjectionState.ts";
+import { makeRelatedThreadLinkProjection } from "../../relatedWork/relatedThreadLinkProjection.ts";
 import { ProjectionThreadActivity } from "../../persistence/Services/ProjectionThreadActivities.ts";
 import { ProjectionThreadMessage } from "../../persistence/Services/ProjectionThreadMessages.ts";
 import { ProjectionThreadProposedPlan } from "../../persistence/Services/ProjectionThreadProposedPlans.ts";
@@ -3857,11 +3858,16 @@ pending_approval_requests AS (
         ),
       );
 
+  // Related-thread links live in their own table; attach them to every read
+  // that returns full threads.
+  const relatedThreadLinks = makeRelatedThreadLinkProjection(sql);
+
   return {
-    getCommandReadModel,
+    getCommandReadModel: () =>
+      getCommandReadModel().pipe(Effect.flatMap(relatedThreadLinks.attachToReadModel)),
     getUserInputActivity,
     listActivitiesByKind,
-    getSnapshot,
+    getSnapshot: () => getSnapshot().pipe(Effect.flatMap(relatedThreadLinks.attachToReadModel)),
     getShellSnapshot,
     listThreadsWithPullRequests,
     getArchivedShellSnapshot,
@@ -3880,8 +3886,20 @@ pending_approval_requests AS (
     getThreadShellById,
     getThreadRuntimeContext,
     getTurnStartMessage,
-    getThreadDetailById,
-    getThreadDetailSnapshot,
+    getThreadDetailById: (threadId, query) =>
+      getThreadDetailById(threadId, query).pipe(
+        Effect.flatMap(relatedThreadLinks.attachToThreadOption),
+      ),
+    getThreadDetailSnapshot: (threadId, window) =>
+      getThreadDetailSnapshot(threadId, window).pipe(
+        Effect.flatMap((snapshot) =>
+          Option.isNone(snapshot)
+            ? Effect.succeed(snapshot)
+            : relatedThreadLinks
+                .attachToThread(snapshot.value.thread)
+                .pipe(Effect.map((thread) => Option.some({ ...snapshot.value, thread }))),
+        ),
+      ),
   } satisfies ProjectionSnapshotQueryShape;
 });
 

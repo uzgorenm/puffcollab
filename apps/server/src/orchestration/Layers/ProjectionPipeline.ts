@@ -63,6 +63,10 @@ import {
   parseThreadSegmentFromAttachmentId,
   toSafeThreadAttachmentSegment,
 } from "../../attachmentStore.ts";
+import {
+  makeRelatedThreadLinkProjection,
+  RELATED_THREAD_LINKS_PROJECTOR,
+} from "../../relatedWork/relatedThreadLinkProjection.ts";
 
 export const ORCHESTRATION_PROJECTOR_NAMES = {
   projects: "projection.projects",
@@ -74,6 +78,7 @@ export const ORCHESTRATION_PROJECTOR_NAMES = {
   threadTurns: "projection.thread-turns",
   checkpoints: "projection.checkpoints",
   pendingApprovals: "projection.pending-approvals",
+  threadRelatedLinks: RELATED_THREAD_LINKS_PROJECTOR,
 } as const;
 
 type ProjectorName =
@@ -1966,6 +1971,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       }
     });
 
+    const relatedThreadLinkProjection = makeRelatedThreadLinkProjection(sql);
     const projectors: ReadonlyArray<ProjectorDefinition> = [
       {
         name: ORCHESTRATION_PROJECTOR_NAMES.projects,
@@ -2002,6 +2008,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       {
         name: ORCHESTRATION_PROJECTOR_NAMES.threads,
         apply: applyThreadsProjection,
+      },
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.threadRelatedLinks,
+        apply: relatedThreadLinkProjection.apply,
       },
     ];
 
