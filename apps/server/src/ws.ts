@@ -46,6 +46,7 @@ import {
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,
+  RelatedWorkError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   ProjectId,
@@ -161,6 +162,7 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import * as RelatedWork from "./relatedWork/RelatedWork.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
 import * as TeamOverview from "./team/TeamOverview.ts";
@@ -567,6 +569,7 @@ const makeWsRpcLayer = (
       const teamAccess = yield* TeamAccess.TeamAccess;
       const threadAccess = yield* ThreadAccess.ThreadAccess;
       const teamOverview = yield* TeamOverview.TeamOverview;
+      const relatedWork = yield* RelatedWork.RelatedWork;
       const currentMemberId = currentMember.memberId;
       const cooperation = yield* CooperationService.CooperationService;
       const analytics = yield* AnalyticsService.AnalyticsService;
@@ -3696,6 +3699,19 @@ const makeWsRpcLayer = (
             WS_METHODS.cooperationResolveItem,
             cooperation.resolveItem(currentMemberId, input),
             { "rpc.aggregate": "cooperation" },
+          ),
+        [WS_METHODS.relatedWorkSuggest]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.relatedWorkSuggest,
+            relatedWork
+              .suggest(currentMemberId, input)
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new RelatedWorkError({ message: "Failed to suggest related work", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.projectsCreateNew]: (input) =>
           observeRpcEffect(WS_METHODS.projectsCreateNew, createNewProject(input), {

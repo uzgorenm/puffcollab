@@ -943,6 +943,66 @@ describe("ProviderCommandReactor", () => {
     expect(providerTraffic).not.toContain(secret);
   });
 
+  it("never sends related-thread links to the provider", async () => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    const relatedThreadId = ThreadId.make("thread-related-secret");
+    const relatedTitle = "Rewrite billing with a ledger";
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("cmd-related-thread-create"),
+        threadId: relatedThreadId,
+        projectId: asProjectId("project-1"),
+        title: relatedTitle,
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        branch: null,
+        worktreePath: null,
+        createdAt: now,
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.related-thread.link",
+        commandId: CommandId.make("cmd-related-link"),
+        threadId: ThreadId.make("thread-1"),
+        relatedThreadId,
+        relationship: "alternative",
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-related"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-related"),
+          role: "user",
+          text: "hello reactor",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    const readModel = await harness.readModel();
+    expect(
+      readModel.threads.find((entry) => entry.id === ThreadId.make("thread-1"))?.relatedThreads,
+    ).toHaveLength(1);
+    const providerInput = JSON.stringify([
+      harness.startSession.mock.calls,
+      harness.sendTurn.mock.calls,
+    ]);
+    expect(providerInput).toContain("hello reactor");
+    expect(providerInput).not.toContain(relatedTitle);
+    expect(providerInput).not.toContain(relatedThreadId);
+  });
+
   effectIt.effect("forwards only a user-renamed title when starting a provider session", () =>
     Effect.gen(function* () {
       const harness = yield* Effect.promise(() =>

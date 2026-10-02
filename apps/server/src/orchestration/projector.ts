@@ -13,6 +13,10 @@ import {
   OrchestrationMessage,
   OrchestrationSession,
   OrchestrationThread,
+  removeRelatedThreadLink,
+  ThreadRelatedThreadLinkedPayload,
+  ThreadRelatedThreadUnlinkedPayload,
+  upsertRelatedThreadLink,
   WORKTREE_SETUP_ACTIVITY_KIND,
 } from "@t3tools/contracts";
 import {
@@ -724,6 +728,52 @@ export function projectEvent(
                 nextBase.projects,
               ),
               updatedAt: payload.updatedAt,
+            }),
+          };
+        }),
+      );
+
+    // Links are metadata, not activity: they leave updatedAt alone.
+    case "thread.related-thread-linked":
+      return decodeForEvent(
+        ThreadRelatedThreadLinkedPayload,
+        event.payload,
+        event.type,
+        "payload",
+      ).pipe(
+        Effect.map((payload) => {
+          const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+          if (!thread) {
+            return nextBase;
+          }
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, payload.threadId, {
+              relatedThreads: upsertRelatedThreadLink(thread.relatedThreads, payload.link),
+            }),
+          };
+        }),
+      );
+
+    case "thread.related-thread-unlinked":
+      return decodeForEvent(
+        ThreadRelatedThreadUnlinkedPayload,
+        event.payload,
+        event.type,
+        "payload",
+      ).pipe(
+        Effect.map((payload) => {
+          const thread = nextBase.threads.find((entry) => entry.id === payload.threadId);
+          if (!thread) {
+            return nextBase;
+          }
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, payload.threadId, {
+              relatedThreads: removeRelatedThreadLink(
+                thread.relatedThreads,
+                payload.relatedThreadId,
+              ),
             }),
           };
         }),

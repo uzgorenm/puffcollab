@@ -70,6 +70,7 @@ import Migration0055 from "./Migrations/055_TeamMembers.ts";
 import Migration0060 from "./Migrations/060_SharedThreads.ts";
 import Migration0065 from "./Migrations/065_TeamOverview.ts";
 import Migration0070 from "./Migrations/070_Cooperation.ts";
+import Migration0075 from "./Migrations/075_ProjectionThreadRelatedLinks.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -140,6 +141,7 @@ const migrationEntries = [
   [60, "SharedThreads", Migration0060],
   [65, "TeamOverview", Migration0065],
   [70, "Cooperation", Migration0070],
+  [75, "ProjectionThreadRelatedLinks", Migration0075],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

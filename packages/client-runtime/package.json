@@ -227,6 +227,10 @@
       "types": "./src/state/cooperation.ts",
       "default": "./src/state/cooperation.ts"
     },
+    "./state/related-work": {
+      "types": "./src/state/relatedWork.ts",
+      "default": "./src/state/relatedWork.ts"
+    },
     "./state/source-control": {
       "types": "./src/state/sourceControl.ts",
       "default": "./src/state/sourceControl.ts"

@@ -43,6 +43,7 @@ import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { observeResponsiveBreakpointFade, usePanelAnimationSettings } from "../../panelAnimations";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { RelatedThreadsControl } from "../relatedWork/RelatedWork";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -488,6 +489,12 @@ export const ChatHeader = memo(function ChatHeader({
           )}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
+      {isServerThread ? (
+        <RelatedThreadsControl
+          environmentId={activeThreadEnvironmentId}
+          threadId={activeThreadId}
+        />
+      ) : null}
       <div
         ref={headerActionsRef}
         data-chat-header-actions

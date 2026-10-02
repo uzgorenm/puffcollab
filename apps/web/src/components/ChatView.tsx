@@ -533,6 +533,7 @@ import {
   supportsServerUpdateThreadContinuation,
 } from "../versionSkew";
 import { useAssetUrls } from "../assets/assetUrls";
+import { RelatedWorkComposerStrip } from "./relatedWork/RelatedWork";
 import {
   ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
   recallableComposerPrompt,
@@ -9999,6 +10000,13 @@ export default function ChatView(props: ChatViewProps) {
                         : undefined
                     }
                   >
+                    {isLocalDraftThread && environmentId ? (
+                      <RelatedWorkComposerStrip
+                        environmentId={environmentId}
+                        projectId={activeProject?.id ?? null}
+                        composerDraftTarget={composerDraftTarget}
+                      />
+                    ) : null}
                     <ComposerSurface.Shell contextStrip={showComposerContextStrip}>
                       <ComposerSurface.Host>
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">

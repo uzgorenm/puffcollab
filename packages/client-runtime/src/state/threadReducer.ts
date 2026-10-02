@@ -14,7 +14,12 @@ import type {
   TurnId,
 } from "@t3tools/contracts";
 import { threadPullRequestKeysEqual } from "@t3tools/shared/threadPullRequests";
-import { isImportedAgentSessionMessageId, OWNER_MEMBER_ID } from "@t3tools/contracts";
+import {
+  isImportedAgentSessionMessageId,
+  OWNER_MEMBER_ID,
+  removeRelatedThreadLink,
+  upsertRelatedThreadLink,
+} from "@t3tools/contracts";
 import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
 
 export type ThreadDetailReducerResult =
@@ -313,6 +318,28 @@ export function applyThreadDetailEvent(
         ),
         event.payload.updatedAt,
       );
+
+    // Links are metadata, not activity: they leave updatedAt alone.
+    case "thread.related-thread-linked":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          relatedThreads: upsertRelatedThreadLink(thread.relatedThreads, event.payload.link),
+        },
+      };
+
+    case "thread.related-thread-unlinked":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          relatedThreads: removeRelatedThreadLink(
+            thread.relatedThreads,
+            event.payload.relatedThreadId,
+          ),
+        },
+      };
 
     case "thread.pull-request-synced": {
       if (

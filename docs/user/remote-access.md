@@ -222,6 +222,16 @@ comments appear in the timeline for everyone following and are never sent to
 the agent. Admins can also stop, archive, or delete any thread, and only admins
 can delete a project.
 
+### Related work
+
+While you write the first message of a new thread, T3 Code lists teammates'
+shared threads in the same project that look related, so you can check for
+overlapping work before starting. On a thread you own, the related-threads
+button next to the title shows more suggestions; mark one **Complementary**
+or **Alternative** to link it. Anyone who can see your thread sees its links,
+and a linked thread they cannot open shows as unavailable. Links are only
+shown to people; they are never sent to the agent.
+
 ## Using the Desktop App as a Remote Only
 
 If a computer should only drive work running elsewhere, turn off its local environment. In the

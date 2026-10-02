@@ -185,6 +185,7 @@ import * as SourceControlRepositoryService from "./sourceControl/SourceControlRe
 import { REPLAY_MARKER_MAX_AGE } from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import * as RelatedWork from "./relatedWork/RelatedWork.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
 import * as TeamOverview from "./team/TeamOverview.ts";
@@ -1252,8 +1253,12 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(
         Layer.mergeAll(
           Layer.mock(TeamOverview.TeamOverview)({}),
-          ThreadAccess.layer.pipe(
-            Layer.provideMerge(TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer()))),
+          RelatedWork.layer.pipe(
+            Layer.provideMerge(
+              ThreadAccess.layer.pipe(
+                Layer.provideMerge(TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer()))),
+              ),
+            ),
           ),
         ),
       ),
