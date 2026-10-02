@@ -1,3 +1,9 @@
+# Puff Collab
+
+Puff Collab is a collaborative fork of [T3 Code](https://github.com/pingdotgg/t3code). Several teammates share one environment: each person drives their own coding threads, can share them with the project, follow teammates' work, comment without taking control, and get cooperation analysis that spots overlapping or conflicting work across threads. Analysis runs on whichever provider subscription the environment has configured.
+
+Work is tracked in this repository's [milestones and issues](https://github.com/uzgorenm/puffcollab/issues). Everything below describes the T3 Code base this fork builds on.
+
 # T3 Code
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
