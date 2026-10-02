@@ -229,3 +229,44 @@ export function createTeamOverviewEnvironmentAtoms<R, E>(
     }),
   };
 }
+
+const ACTIVITY_PHRASES: Readonly<Record<TeamActivityItem["kind"], string>> = {
+  "thread-created": "started a thread",
+  "turn-started": "sent a message",
+  "turn-completed": "Agent finished a turn",
+  "turn-errored": "Agent hit an error",
+  "turn-interrupted": "Agent was interrupted",
+  "approval-requested": "Agent is waiting for approval",
+  "input-requested": "Agent asked a question",
+  "brief-updated": "updated the brief",
+  "focus-set": "set their focus",
+  "focus-cleared": "cleared their focus",
+};
+
+/** Whether the phrase reads after the actor's name ("Ada started a thread"). */
+export function teamActivityHasActor(kind: TeamActivityItem["kind"]): boolean {
+  switch (kind) {
+    case "turn-completed":
+    case "turn-errored":
+    case "turn-interrupted":
+    case "approval-requested":
+    case "input-requested":
+      return false;
+    default:
+      return true;
+  }
+}
+
+/** Plain-language phrase for a feed item, shared by every client. */
+export function teamActivityPhrase(kind: TeamActivityItem["kind"]): string {
+  return ACTIVITY_PHRASES[kind];
+}
+
+export const TEAM_WORK_CARD_STATUS_LABELS: Readonly<Record<TeamWorkCardStatus, string>> = {
+  "waiting-approval": "Waiting on approval",
+  "waiting-input": "Waiting on input",
+  working: "Working",
+  errored: "Errored",
+  settled: "Settled",
+  idle: "Idle",
+};

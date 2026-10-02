@@ -181,6 +181,12 @@ export function useThreadActionMenu(input: {
           }
         };
         switch (action) {
+          case "team-overview":
+            void router.navigate({
+              to: "/team/$environmentId/$projectId",
+              params: { environmentId: thread.environmentId, projectId: thread.projectId },
+            });
+            return;
           case "project-settings": {
             const project = projects.find(
               (candidate) =>

@@ -64,6 +64,7 @@ import {
   SquarePenIcon,
   SunIcon,
   TextSearchIcon,
+  UsersIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -2285,6 +2286,26 @@ function OpenCommandPaletteDialog(props: {
         await navigate({
           to: "/projects/$projectKey",
           params: { projectKey: contextualProjectGroup.projectKey },
+        });
+      },
+    });
+  }
+
+  const teamOverviewTarget = contextualProjectRef ?? projectPickerEntries[0]?.targetProject ?? null;
+  if (teamOverviewTarget) {
+    const projectId =
+      "projectId" in teamOverviewTarget ? teamOverviewTarget.projectId : teamOverviewTarget.id;
+    actionItems.push({
+      kind: "action",
+      value: "action:team-overview",
+      searchTerms: ["team", "overview", "brief", "focus", "activity", "work", "members", "shared"],
+      title: "Open team overview",
+      ...(contextualProjectGroup ? { description: contextualProjectGroup.displayName } : {}),
+      icon: <UsersIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await navigate({
+          to: "/team/$environmentId/$projectId",
+          params: { environmentId: teamOverviewTarget.environmentId, projectId },
         });
       },
     });
