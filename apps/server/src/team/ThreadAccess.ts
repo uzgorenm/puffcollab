@@ -22,8 +22,8 @@ import {
   isThreadShared,
   type MemberId,
   type OrchestrationCommand,
-  OWNER_MEMBER_ID,
   ProjectId,
+  threadOwnerOf,
   ThreadId,
   type ThreadVisibility,
 } from "@t3tools/contracts";
@@ -34,10 +34,6 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as TeamAccess from "./TeamAccess.ts";
-
-/** The member that owns a thread: its creator, or the environment owner. */
-export const threadOwnerOf = (thread: { readonly createdBy?: MemberId | null | undefined }) =>
-  thread.createdBy ?? OWNER_MEMBER_ID;
 
 /** What a member can see; `projects.all` holds exactly for admins. */
 export interface ThreadViewer {
@@ -306,6 +302,11 @@ const make = Effect.gen(function* () {
             ? undefined
             : yield* deny(command, "not-comment-author");
         }
+        case "thread.related-thread.link":
+        case "thread.related-thread.unlink":
+          // Links are the owner's statement about their own thread; admins
+          // get no housekeeping exception here.
+          return yield* requireControl(memberId, command.threadId, command);
         default:
           // Every other client command targets one thread and is owner-only.
           if ("threadId" in command) {

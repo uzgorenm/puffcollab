@@ -204,9 +204,6 @@ it.layer(NodeServices.layer)("TeamAccess", (it) => {
       yield* sql`UPDATE projection_threads SET project_id = ${projectB} WHERE thread_id = 'thread-c'`;
       expect(yield* team.canSeeThread(member.memberId, threadC)).toBe(false);
 
-      expect(yield* team.isThreadCreator(member.memberId, ThreadId.make("thread-b"))).toBe(true);
-      expect(yield* team.isThreadCreator(OWNER_MEMBER_ID, ThreadId.make("thread-b"))).toBe(false);
-
       yield* team.removeProjectMember({ projectId: projectA, memberId: member.memberId });
       expect(yield* team.isProjectMember(member.memberId, projectA)).toBe(false);
     }).pipe(Effect.provide(testLayer)),

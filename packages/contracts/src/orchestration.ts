@@ -25,6 +25,7 @@ import {
   TrimmedString,
   TurnId,
 } from "./baseSchemas.ts";
+import { OWNER_MEMBER_ID } from "./members.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   RelatedThreadLink,
@@ -813,6 +814,14 @@ export type ThreadVisibility = typeof ThreadVisibility.Type;
 /** A thread is shared only when explicitly marked so; missing means private. */
 export const isThreadShared = (thread: { readonly visibility?: ThreadVisibility | undefined }) =>
   thread.visibility === "shared";
+
+/**
+ * The member that owns (and alone controls) a thread: its creator, or the
+ * environment owner when no creator was recorded.
+ */
+export const threadOwnerOf = (thread: {
+  readonly createdBy?: MemberId | null | undefined;
+}): MemberId => thread.createdBy ?? OWNER_MEMBER_ID;
 
 export const THREAD_COMMENT_MAX_LENGTH = 4_000;
 

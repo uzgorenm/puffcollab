@@ -28,7 +28,7 @@ import {
   MessageId,
   OrchestrationEvent,
   type OrchestrationThreadShell,
-  OWNER_MEMBER_ID,
+  threadOwnerOf,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -189,10 +189,6 @@ const toSettings = (threadId: ThreadId, row: SettingsRow | undefined): Cooperati
         updatedAt: row.updatedAt,
       };
 
-/** Threads without a creator belong to the environment owner. */
-export const effectiveOwner = (thread: Pick<OrchestrationThreadShell, "createdBy">): MemberId =>
-  thread.createdBy ?? OWNER_MEMBER_ID;
-
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const snapshots = yield* ProjectionSnapshotQuery;
@@ -245,10 +241,9 @@ export const make = Effect.gen(function* () {
       return shell;
     });
 
+  // Owner-only, the same rule ThreadAccess applies to thread commands.
   const isOwner = (memberId: MemberId, shell: OrchestrationThreadShell) =>
-    shell.createdBy == null
-      ? Effect.succeed(memberId === OWNER_MEMBER_ID)
-      : team.isThreadCreator(memberId, shell.id).pipe(internal("ownership check"));
+    threadOwnerOf(shell) === memberId;
 
   const readSummary = (threadId: ThreadId) =>
     sql<{ readonly summary: string; readonly updatedAt: string }>`
@@ -282,8 +277,8 @@ export const make = Effect.gen(function* () {
       const shell = yield* requireVisibleShell(memberId, threadId);
       return {
         threadId,
-        ownerMemberId: effectiveOwner(shell),
-        canEdit: yield* isOwner(memberId, shell),
+        ownerMemberId: threadOwnerOf(shell),
+        canEdit: isOwner(memberId, shell),
         settings: yield* readSettings(threadId),
         summary: yield* readSummary(threadId),
         lastRun: yield* readLastRun(threadId),
@@ -322,7 +317,7 @@ export const make = Effect.gen(function* () {
     consentLock.withPermit(
       Effect.gen(function* () {
         const shell = yield* requireVisibleShell(memberId, input.threadId);
-        if (!(yield* isOwner(memberId, shell))) {
+        if (!isOwner(memberId, shell)) {
           return yield* fail("forbidden", "Only the thread owner can change cooperation settings.");
         }
         const featureTopic = input.featureTopic.trim();
@@ -385,7 +380,7 @@ export const make = Effect.gen(function* () {
       }
       const grant: ExportGrant = {
         threadId,
-        ownerMemberId: effectiveOwner(shell),
+        ownerMemberId: threadOwnerOf(shell),
         version: settings.version,
         featureTopic: settings.featureTopic,
         relationship: settings.relationship,
@@ -625,7 +620,7 @@ export const make = Effect.gen(function* () {
   const requestAnalysis: CooperationService["Service"]["requestAnalysis"] = (memberId, threadId) =>
     Effect.gen(function* () {
       const shell = yield* requireVisibleShell(memberId, threadId);
-      if (!(yield* isOwner(memberId, shell))) {
+      if (!isOwner(memberId, shell)) {
         return yield* fail("forbidden", "Only the thread owner can request analysis.");
       }
       if (!(yield* analyst.available)) {
@@ -706,7 +701,7 @@ export const make = Effect.gen(function* () {
         const targetThreadId = ThreadId.make(row.targetThreadId);
         const target = yield* readShell(targetThreadId);
         // Ownership is re-checked at decision time; a retained recipient id is not authority.
-        if (target === undefined || effectiveOwner(target) !== memberId) {
+        if (target === undefined || threadOwnerOf(target) !== memberId) {
           return yield* fail("forbidden", "Only the target thread's owner can act on this item.");
         }
         if (row.state !== "pending")

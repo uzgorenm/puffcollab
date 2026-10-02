@@ -9,11 +9,11 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
-import { OWNER_MEMBER_ID } from "./members.ts";
 import {
   isThreadShared,
   ProjectBriefText,
   ProjectMemberFocusText,
+  threadOwnerOf,
   type ThreadVisibility,
 } from "./orchestration.ts";
 
@@ -186,7 +186,7 @@ export const isThreadOnTeamOverview = (
     readonly visibility?: ThreadVisibility | undefined;
   },
   memberId: MemberId,
-): boolean => isThreadShared(thread) || (thread.createdBy ?? OWNER_MEMBER_ID) === memberId;
+): boolean => isThreadShared(thread) || threadOwnerOf(thread) === memberId;
 
 /**
  * Deterministic work-card status from turn/session state. Precedence: what

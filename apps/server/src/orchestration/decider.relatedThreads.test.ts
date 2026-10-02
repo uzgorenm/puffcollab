@@ -94,7 +94,6 @@ it.layer(NodeServices.layer)("related-thread link decider", (it) => {
       const linked = yield* decideOrchestrationCommand({
         command: link(SHARED, "complementary"),
         readModel: readModel(),
-        actor: ALICE,
       });
       const linkedEvent = Array.isArray(linked) ? linked[0] : linked;
       expect(linkedEvent?.type).toBe("thread.related-thread-linked");
@@ -109,7 +108,6 @@ it.layer(NodeServices.layer)("related-thread link decider", (it) => {
       const unlinked = yield* decideOrchestrationCommand({
         command: unlink(SHARED),
         readModel: afterLink,
-        actor: ALICE,
       });
       const unlinkedEvent = Array.isArray(unlinked) ? unlinked[0] : unlinked;
       expect(unlinkedEvent?.type).toBe("thread.related-thread-unlinked");
@@ -128,7 +126,6 @@ it.layer(NodeServices.layer)("related-thread link decider", (it) => {
       const decided = yield* decideOrchestrationCommand({
         command: link(SHARED, "alternative"),
         readModel: readModel({ relatedThreads: [existing] }),
-        actor: ALICE,
       });
       const event = Array.isArray(decided) ? decided[0] : decided;
       expect(event?.type === "thread.related-thread-linked" && event.payload.link).toEqual({
@@ -139,52 +136,37 @@ it.layer(NodeServices.layer)("related-thread link decider", (it) => {
         decideOrchestrationCommand({
           command: link(SHARED, "complementary"),
           readModel: readModel({ relatedThreads: [existing] }),
-          actor: ALICE,
         }),
       );
       expect(Exit.isFailure(duplicate)).toBe(true);
     }),
   );
 
-  it.effect("only the owner can link or unlink", () =>
+  // Ownership itself is enforced before dispatch (ThreadAccess.authorizeCommand).
+  it.effect("the owner may also link their own private threads", () =>
     Effect.gen(function* () {
-      const existing = {
-        relatedThreadId: SHARED,
-        relationship: "alternative" as const,
-        linkedAt: NOW,
-      };
-      for (const command of [link(SHARED, "complementary"), unlink(SHARED)]) {
-        const exit = yield* Effect.exit(
-          decideOrchestrationCommand({
-            command,
-            readModel: readModel({ relatedThreads: [existing] }),
-            actor: BOB,
-          }),
-        );
-        expect(Exit.isFailure(exit)).toBe(true);
-      }
-    }),
-  );
+      const model = readModel();
+      const ownPrivate = makeThread(ThreadId.make("thread-own-private"), {
+        createdBy: ALICE,
+        visibility: "private",
+      });
+      const linked = yield* Effect.exit(
+        decideOrchestrationCommand({
+          command: link(ownPrivate.id, "complementary"),
+          readModel: { ...model, threads: [...model.threads, ownPrivate] },
+        }),
+      );
+      expect(Exit.isSuccess(linked)).toBe(true);
 
-  it.effect("a thread without a creator belongs to the environment owner", () =>
-    Effect.gen(function* () {
-      const ownerless = readModel({ createdBy: null });
-      const byOwner = yield* Effect.exit(
+      // A creator-less thread belongs to the environment owner, not to Alice.
+      const ownerless = makeThread(ThreadId.make("thread-ownerless"), { createdBy: null });
+      const rejected = yield* Effect.exit(
         decideOrchestrationCommand({
-          command: link(SHARED, "complementary"),
-          readModel: ownerless,
-          actor: MemberId.make("owner"),
+          command: link(ownerless.id, "complementary"),
+          readModel: { ...model, threads: [...model.threads, ownerless] },
         }),
       );
-      expect(Exit.isSuccess(byOwner)).toBe(true);
-      const byMember = yield* Effect.exit(
-        decideOrchestrationCommand({
-          command: link(SHARED, "complementary"),
-          readModel: ownerless,
-          actor: ALICE,
-        }),
-      );
-      expect(Exit.isFailure(byMember)).toBe(true);
+      expect(Exit.isFailure(rejected)).toBe(true);
     }),
   );
 
@@ -195,7 +177,6 @@ it.layer(NodeServices.layer)("related-thread link decider", (it) => {
           decideOrchestrationCommand({
             command: link(target, "complementary"),
             readModel: readModel(),
-            actor: ALICE,
           }),
         );
         expect(Exit.isFailure(exit)).toBe(true);
@@ -222,7 +203,6 @@ it.layer(NodeServices.layer)("related-thread link decider", (it) => {
       const decided = yield* decideOrchestrationCommand({
         command: unlink(SHARED),
         readModel: withDeleted,
-        actor: ALICE,
       });
       const event = Array.isArray(decided) ? decided[0] : decided;
       expect(event?.type).toBe("thread.related-thread-unlinked");

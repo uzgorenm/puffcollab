@@ -2272,15 +2272,6 @@ describe("OrchestrationEngine", () => {
         relatedThreadId,
         relationship: "alternative",
       } as const;
-      // Another member cannot link Ada's thread.
-      await expect(
-        system.run(
-          system.engine.dispatch(
-            { ...link, commandId: CommandId.make("cmd-related-link-bob") },
-            { actor: MemberId.make("member-bob") },
-          ),
-        ),
-      ).rejects.toThrow();
       await system.run(system.engine.dispatch(link, { actor: ada }));
 
       const detail = await system.readThread(threadId);

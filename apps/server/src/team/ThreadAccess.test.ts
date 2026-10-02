@@ -55,6 +55,12 @@ const OWNER_ONLY_COMMANDS: ReadonlyArray<OrchestrationCommand> = [
   command({ type: "thread.meta.update", title: "Renamed" }),
   command({ type: "thread.settle" }),
   command({ type: "thread.pin" }),
+  command({
+    type: "thread.related-thread.link",
+    relatedThreadId: "thread-other",
+    relationship: "complementary",
+  }),
+  command({ type: "thread.related-thread.unlink", relatedThreadId: "thread-other" }),
 ];
 
 const ADMIN_HOUSEKEEPING = new Set([

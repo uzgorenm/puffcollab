@@ -2,8 +2,8 @@ import {
   type EnvironmentId,
   type MemberId,
   type OrchestrationThreadShell,
-  OWNER_MEMBER_ID,
   type RelatedThreadLink,
+  threadOwnerOf,
   type ThreadId,
   WS_METHODS,
 } from "@t3tools/contracts";
@@ -70,7 +70,7 @@ export function isRelatedThreadOwner(
   thread: { readonly createdBy?: MemberId | null | undefined },
   currentMemberId: MemberId | null,
 ): boolean {
-  return currentMemberId !== null && (thread.createdBy ?? OWNER_MEMBER_ID) === currentMemberId;
+  return currentMemberId !== null && threadOwnerOf(thread) === currentMemberId;
 }
 
 export type RelatedThreadStatus = "working" | "active" | "settled" | "archived";

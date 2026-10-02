@@ -6,7 +6,6 @@ import {
   ThreadLinkedPullRequest,
   UserInputRequestedPayload,
   isImportedAgentSessionMessageId,
-  type MemberId,
   type OrchestrationCommand,
   type OrchestrationEvent,
   type OrchestrationReadModel,
@@ -214,13 +213,10 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
   command,
   readModel,
   userInputActivity,
-  actor,
 }: {
   readonly command: OrchestrationCommand;
   readonly readModel: OrchestrationReadModel;
   readonly userInputActivity?: OrchestrationThreadActivity;
-  /** The session member dispatching the command, for owner-only commands. */
-  readonly actor?: MemberId;
 }): Effect.fn.Return<
   DecideOrchestrationCommandResult,
   OrchestrationCommandRejection | PlatformError.PlatformError,
@@ -1107,7 +1103,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
     case "thread.related-thread.link":
     case "thread.related-thread.unlink": {
       const occurredAt = yield* nowIso;
-      const planned = yield* decideRelatedThreadCommand({ command, readModel, actor, occurredAt });
+      const planned = yield* decideRelatedThreadCommand({ command, readModel, occurredAt });
       return {
         ...(yield* withEventBase({
           aggregateKind: "thread",

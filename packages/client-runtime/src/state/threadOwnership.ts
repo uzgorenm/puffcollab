@@ -3,13 +3,9 @@ import {
   type Member,
   type MemberId,
   type OrchestrationThreadComment,
-  OWNER_MEMBER_ID,
+  threadOwnerOf,
   type ThreadVisibility,
 } from "@t3tools/contracts";
-
-/** The member that owns a thread: its creator, or the environment owner. */
-export const threadOwnerId = (thread: { readonly createdBy?: MemberId | null | undefined }) =>
-  thread.createdBy ?? OWNER_MEMBER_ID;
 
 export interface ThreadCollaboration {
   readonly ownerId: MemberId;
@@ -36,7 +32,7 @@ export function threadCollaboration(input: {
   readonly currentMemberId: MemberId | null;
   readonly members: ReadonlyMap<MemberId, Member>;
 }): ThreadCollaboration {
-  const ownerId = threadOwnerId(input.thread);
+  const ownerId = threadOwnerOf(input.thread);
   return {
     ownerId,
     isOwner: input.currentMemberId === null || input.currentMemberId === ownerId,

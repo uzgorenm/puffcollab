@@ -1,6 +1,8 @@
 /**
  * Related-thread links (Puff Collab): the owner of a thread records that it
  * complements, or is an alternative to, another thread in the same project.
+ * Only the owner may link or unlink; ThreadAccess.authorizeCommand enforces
+ * that before dispatch, so the decider only validates the link itself.
  *
  * The decider half is pure and runs inside `decideOrchestrationCommand`; the
  * projector half keeps `OrchestrationThread.relatedThreads` current in the
@@ -11,10 +13,8 @@
  */
 import {
   isThreadShared,
-  type MemberId,
   type OrchestrationReadModel,
-  type OrchestrationThread,
-  OWNER_MEMBER_ID,
+  threadOwnerOf,
   type ThreadRelatedThreadLinkCommand,
   type ThreadRelatedThreadLinkedPayload,
   type ThreadRelatedThreadUnlinkCommand,
@@ -38,34 +38,22 @@ export type PlannedRelatedThreadEvent =
       readonly payload: ThreadRelatedThreadUnlinkedPayload;
     };
 
-/** Threads without a recorded creator belong to the environment owner. */
-export const threadOwnerOf = (thread: Pick<OrchestrationThread, "createdBy">): MemberId =>
-  thread.createdBy ?? OWNER_MEMBER_ID;
-
 const reject = (command: RelatedThreadCommand, detail: string) =>
   new OrchestrationCommandInvariantError({ commandType: command.type, detail });
 
-/**
- * Decide a link/unlink command. `actor` is the session member the engine
- * stamps; commands without one (server-originated) act as the owner.
- */
+/** Decide a link/unlink command for a thread its owner controls. */
 export const decideRelatedThreadCommand = (input: {
   readonly command: RelatedThreadCommand;
   readonly readModel: OrchestrationReadModel;
-  readonly actor: MemberId | undefined;
   readonly occurredAt: string;
 }): Effect.Effect<PlannedRelatedThreadEvent, OrchestrationCommandInvariantError> =>
   Effect.gen(function* () {
     const { command, readModel, occurredAt } = input;
-    const actor = input.actor ?? OWNER_MEMBER_ID;
     const thread = readModel.threads.find(
       (entry) => entry.id === command.threadId && entry.deletedAt === null,
     );
     if (thread === undefined) {
       return yield* reject(command, `Thread '${command.threadId}' does not exist.`);
-    }
-    if (threadOwnerOf(thread) !== actor) {
-      return yield* reject(command, "Only the thread owner can change its related threads.");
     }
     const existing = thread.relatedThreads?.find(
       (link) => link.relatedThreadId === command.relatedThreadId,
@@ -90,11 +78,11 @@ export const decideRelatedThreadCommand = (input: {
       (entry) => entry.id === command.relatedThreadId && entry.deletedAt === null,
     );
     // One message for missing, foreign-project, and private threads so a
-    // rejection cannot be used to probe for threads the actor cannot see.
+    // rejection cannot be used to probe for threads the owner cannot see.
     if (
       related === undefined ||
       related.projectId !== thread.projectId ||
-      !(isThreadShared(related) || threadOwnerOf(related) === actor)
+      !(isThreadShared(related) || threadOwnerOf(related) === threadOwnerOf(thread))
     ) {
       return yield* reject(
         command,

@@ -84,8 +84,6 @@ function makeHarness() {
         }),
         Layer.mock(TeamAccess.TeamAccess)({
           canSeeThread: () => Effect.succeed(true),
-          isThreadCreator: (memberId, threadId) =>
-            Effect.succeed(shells.get(threadId)?.createdBy === memberId),
         }),
         Layer.mock(OrchestrationEngineService)({
           dispatch: (command, options) =>

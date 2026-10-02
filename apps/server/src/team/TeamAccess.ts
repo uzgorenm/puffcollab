@@ -158,11 +158,6 @@ export class TeamAccess extends Context.Service<
       memberId: MemberId,
       threadId: ThreadId,
     ) => Effect.Effect<boolean, TeamPersistenceError>;
-    /** Whether the member created (owns) the thread. Threads without a creator have no owner. */
-    readonly isThreadCreator: (
-      memberId: MemberId,
-      threadId: ThreadId,
-    ) => Effect.Effect<boolean, TeamPersistenceError>;
     /** Members whose project visibility or access just changed. */
     readonly visibilityChanges: Stream.Stream<MemberId>;
 
@@ -311,16 +306,6 @@ const make = Effect.gen(function* () {
       if (row.visibility !== "shared") return yield* isAdmin(memberId);
       return yield* isProjectMember(memberId, ProjectId.make(row.projectId));
     });
-
-  const isThreadCreator: TeamAccess["Service"]["isThreadCreator"] = (memberId, threadId) =>
-    sql<{ readonly createdBy: string | null }>`
-      SELECT created_by AS "createdBy"
-      FROM projection_threads
-      WHERE thread_id = ${threadId}
-    `.pipe(
-      Effect.map((rows) => rows[0]?.createdBy === memberId),
-      persistence("isThreadCreator"),
-    );
 
   const listMembers: TeamAccess["Service"]["listMembers"] = () =>
     sql<MemberRow>`
@@ -478,7 +463,6 @@ const make = Effect.gen(function* () {
     isProjectMember,
     projectVisibility,
     canSeeThread,
-    isThreadCreator,
     visibilityChanges: Stream.fromPubSub(changes),
     listMembers,
     addMember,
