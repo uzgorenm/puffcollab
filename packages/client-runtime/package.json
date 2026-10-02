@@ -223,6 +223,10 @@
       "types": "./src/state/teamOverview.ts",
       "default": "./src/state/teamOverview.ts"
     },
+    "./state/cooperation": {
+      "types": "./src/state/cooperation.ts",
+      "default": "./src/state/cooperation.ts"
+    },
     "./state/source-control": {
       "types": "./src/state/sourceControl.ts",
       "default": "./src/state/sourceControl.ts"

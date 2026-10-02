@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 
 import {
@@ -26,6 +27,7 @@ import {
   sanitizePrTitle,
   sanitizeThreadTitle,
 } from "./TextGenerationUtils.ts";
+import { CooperationAnalystOutput } from "./CooperationAnalysisPrompt.ts";
 import * as OpenCodeRuntime from "../provider/opencodeRuntime.ts";
 import * as OpenCodeServerOwner from "../provider/OpenCodeServerOwner.ts";
 
@@ -34,6 +36,7 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generatePrContent",
   "generateBranchName",
   "generateThreadTitle",
+  "generateCooperationAnalysis",
 ]);
 
 type OpenCodeTextGenerationOperation = typeof OpenCodeTextGenerationOperation.Type;
@@ -176,6 +179,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
   const serverConfig = yield* ServerConfig.ServerConfig;
   const openCodeRuntime = yield* OpenCodeRuntime.OpenCodeRuntime;
   const serverOwner = yield* OpenCodeServerOwner.OpenCodeServerOwner;
+  const fileSystem = yield* FileSystem.FileSystem;
 
   const runOpenCodeJson = Effect.fn("runOpenCodeJson")(function* <S extends Schema.Top>(input: {
     readonly operation: OpenCodeTextGenerationOperation;
@@ -453,10 +457,41 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       };
     });
 
+  // The session denies every permission and runs in an empty temp directory,
+  // so the analyst only ever sees the export in its prompt. The model option
+  // "agent" is ignored: a custom agent must not widen what the analyst can do.
+  const generateCooperationAnalysis: NonNullable<
+    TextGeneration.TextGeneration["Service"]["generateCooperationAnalysis"]
+  > = Effect.fn("OpenCodeTextGeneration.generateCooperationAnalysis")(function* (input) {
+    const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-opencode-analysis-" }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new TextGenerationError({
+            operation: "generateCooperationAnalysis",
+            detail: "Failed to create analysis directory.",
+            cause,
+          }),
+      ),
+    );
+    return yield* runOpenCodeJson({
+      operation: "generateCooperationAnalysis",
+      cwd,
+      prompt: input.prompt,
+      outputSchemaJson: CooperationAnalystOutput,
+      modelSelection: {
+        ...input.modelSelection,
+        ...(input.modelSelection.options !== undefined
+          ? { options: input.modelSelection.options.filter((option) => option.id !== "agent") }
+          : {}),
+      },
+    });
+  }, Effect.scoped);
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateCooperationAnalysis,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

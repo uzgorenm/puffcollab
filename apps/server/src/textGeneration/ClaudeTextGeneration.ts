@@ -20,6 +20,7 @@ import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
 import { TextGenerationError } from "@t3tools/contracts";
 import * as TextGeneration from "./TextGeneration.ts";
+import { CooperationAnalystOutput } from "./CooperationAnalysisPrompt.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
@@ -102,7 +103,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateCooperationAnalysis",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -132,7 +134,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateCooperationAnalysis";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -185,9 +188,10 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     );
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* () {
-      // Titles need only the supplied prompt, not configuration from the checkout.
+      // Titles and cooperation analysis need only the supplied prompt, not
+      // configuration from the checkout.
       const workingDirectory =
-        operation === "generateThreadTitle"
+        operation === "generateThreadTitle" || operation === "generateCooperationAnalysis"
           ? yield* fileSystem
               .makeTempDirectoryScoped({ prefix: "t3code-claude-title-" })
               .pipe(
@@ -410,10 +414,25 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       };
     });
 
+  // Tools are disabled (`--tools ""`) and the run uses an empty temp directory,
+  // so the analyst only ever sees the export in its prompt.
+  const generateCooperationAnalysis: NonNullable<
+    TextGeneration.TextGeneration["Service"]["generateCooperationAnalysis"]
+  > = Effect.fn("ClaudeTextGeneration.generateCooperationAnalysis")(function* (input) {
+    return yield* runClaudeJson({
+      operation: "generateCooperationAnalysis",
+      cwd: "",
+      prompt: input.prompt,
+      outputSchemaJson: CooperationAnalystOutput,
+      modelSelection: input.modelSelection,
+    });
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateCooperationAnalysis,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
