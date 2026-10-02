@@ -1,14 +1,16 @@
 import {
-  COOPERATION_AWARENESS_CONTEXT_KIND,
   type CooperationAwarenessItem,
   type CooperationSettings,
   EventId,
   ThreadId,
 } from "@t3tools/contracts";
-import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import { describe, expect, it } from "vite-plus/test";
 
-import { awarenessNoteComposerContext, cooperationSettingsUpdate } from "./cooperation.ts";
+import {
+  appendAwarenessNote,
+  awarenessNoteComposerText,
+  cooperationSettingsUpdate,
+} from "./cooperation.ts";
 
 const item: CooperationAwarenessItem = {
   itemId: "item_1234",
@@ -25,25 +27,16 @@ const item: CooperationAwarenessItem = {
   resolvedAt: "2026-10-01T00:01:00.000Z",
 };
 
-describe("awarenessNoteComposerContext", () => {
-  it("puts an admitted note into the next turn's provider context", () => {
-    const { record, reference } = awarenessNoteComposerContext(item);
-    const message = `${reference} keep going with refunds`;
-
-    const providerText = projectComposerContextForProvider({ text: message, records: [record] });
-
-    expect(record.kind).toBe(COOPERATION_AWARENESS_CONTEXT_KIND);
-    expect(providerText).toContain("Thread A already moved invoices to the new table.");
-    expect(providerText).toContain("keep going with refunds");
+describe("appendAwarenessNote", () => {
+  it("adds an admitted note to the owner's next message, after what they typed", () => {
+    const prompt = appendAwarenessNote("keep going with refunds", item);
+    expect(prompt.startsWith("keep going with refunds\n\n")).toBe(true);
+    expect(prompt).toContain('shared thread "Invoice rework"');
+    expect(prompt).toContain("> Thread A already moved invoices to the new table.");
   });
 
-  it("is not sent when the owner removes the reference before sending", () => {
-    const { record } = awarenessNoteComposerContext(item);
-    const providerText = projectComposerContextForProvider({
-      text: "keep going with refunds",
-      records: [record],
-    });
-    expect(providerText).toBe("keep going with refunds");
+  it("starts an empty composer with the note", () => {
+    expect(appendAwarenessNote("  ", item)).toBe(`${awarenessNoteComposerText(item)}\n\n`);
   });
 });
 

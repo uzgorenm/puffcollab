@@ -1,14 +1,10 @@
 import {
-  COOPERATION_AWARENESS_CONTEXT_KIND,
-  type ComposerContextId,
-  type ComposerContextRecord,
   type CooperationAwarenessItem,
   type CooperationSettings,
   type CooperationSettingsUpdateInput,
   type EnvironmentId,
   WS_METHODS,
 } from "@t3tools/contracts";
-import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import type { Atom } from "effect/unstable/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
@@ -85,35 +81,22 @@ export function cooperationSettingsUpdate(
 }
 
 /**
- * The composer context for an admitted awareness note: a record carrying the
- * note and the inline reference that makes the provider see it. Only the
- * owner's next sent message carries it; nothing is sent on admit.
+ * The text an admitted awareness note adds to the owner's composer. It rides
+ * along with the next message the owner sends, where they can still read,
+ * edit, or remove it; admitting never sends anything by itself.
  */
-export function awarenessNoteComposerContext(item: CooperationAwarenessItem): {
-  readonly record: ComposerContextRecord;
-  readonly reference: string;
-} {
-  const contextId = `awareness-${item.itemId}`
-    .replace(/[^a-z0-9_-]/gi, "-")
-    .slice(0, 128) as ComposerContextId;
-  const label = `Note from ${item.sourceThreadTitle}`;
-  return {
-    record: {
-      version: 1,
-      kind: COOPERATION_AWARENESS_CONTEXT_KIND,
-      contextId,
-      label,
-      payload: {
-        informational: true,
-        sourceThread: item.sourceThreadTitle,
-        note: item.text,
-        evidence: item.citations.map((citation) => citation.eventId),
-      },
-    },
-    reference: formatComposerContextReference({
-      kind: COOPERATION_AWARENESS_CONTEXT_KIND,
-      contextId,
-      label,
-    }),
-  };
+export function awarenessNoteComposerText(item: CooperationAwarenessItem): string {
+  const quoted = item.text
+    .trim()
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
+  return `> Informational note from the shared thread "${item.sourceThreadTitle}" (Puff Collab):\n${quoted}`;
+}
+
+/** Appends an admitted note to whatever the owner has already typed. */
+export function appendAwarenessNote(prompt: string, item: CooperationAwarenessItem): string {
+  const block = awarenessNoteComposerText(item);
+  const trimmed = prompt.trimEnd();
+  return trimmed.length === 0 ? `${block}\n\n` : `${trimmed}\n\n${block}\n\n`;
 }

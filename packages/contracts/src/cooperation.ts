@@ -165,9 +165,6 @@ export const CooperationRunResult = Schema.Struct({
 });
 export type CooperationRunResult = typeof CooperationRunResult.Type;
 
-/** Composer-context kind for an admitted awareness note. */
-export const COOPERATION_AWARENESS_CONTEXT_KIND = "awareness-note";
-
 export class CooperationError extends Schema.TaggedError<CooperationError>()("CooperationError", {
   reason: Schema.Literals([
     "not-found",
