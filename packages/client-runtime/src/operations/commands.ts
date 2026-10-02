@@ -47,6 +47,8 @@ export type ReorderActiveThreadInput = CommandInput<"thread.active.reorder">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
 export type LinkThreadPullRequestInput = CommandInput<"thread.pull-request.link">;
 export type UnlinkThreadPullRequestInput = CommandInput<"thread.pull-request.unlink">;
+export type LinkRelatedThreadInput = CommandInput<"thread.related-thread.link">;
+export type UnlinkRelatedThreadInput = CommandInput<"thread.related-thread.unlink">;
 export type SetThreadRuntimeModeInput = CommandInput<"thread.runtime-mode.set">;
 export type SetThreadInteractionModeInput = CommandInput<"thread.interaction-mode.set">;
 export type StartThreadTurnInput = CommandInput<"thread.turn.start">;
@@ -284,6 +286,26 @@ export const unlinkThreadPullRequest: (input: UnlinkThreadPullRequestInput) => C
       commandId: yield* commandId(input),
     });
   });
+
+export const linkRelatedThread: (input: LinkRelatedThreadInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.linkRelatedThread",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.related-thread.link",
+    commandId: yield* commandId(input),
+  });
+});
+
+export const unlinkRelatedThread: (input: UnlinkRelatedThreadInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.unlinkRelatedThread",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.related-thread.unlink",
+    commandId: yield* commandId(input),
+  });
+});
 
 export const setThreadRuntimeMode: (input: SetThreadRuntimeModeInput) => CommandEffect = Effect.fn(
   "EnvironmentCommands.setThreadRuntimeMode",

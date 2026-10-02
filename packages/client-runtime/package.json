@@ -215,6 +215,10 @@
       "types": "./src/state/members.ts",
       "default": "./src/state/members.ts"
     },
+    "./state/related-work": {
+      "types": "./src/state/relatedWork.ts",
+      "default": "./src/state/relatedWork.ts"
+    },
     "./state/source-control": {
       "types": "./src/state/sourceControl.ts",
       "default": "./src/state/sourceControl.ts"
