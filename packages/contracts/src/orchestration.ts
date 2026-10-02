@@ -1161,6 +1161,37 @@ const ProjectDeleteCommand = Schema.Struct({
   force: Schema.optional(Schema.Boolean),
 });
 
+/** Longest project brief, in characters. Each edit stores a full new version. */
+export const PROJECT_BRIEF_MAX_LENGTH = 20_000;
+/** Longest member focus line, in characters. */
+export const PROJECT_MEMBER_FOCUS_MAX_LENGTH = 280;
+
+export const ProjectBriefText = TrimmedString.check(Schema.isMaxLength(PROJECT_BRIEF_MAX_LENGTH));
+export const ProjectMemberFocusText = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(PROJECT_MEMBER_FOCUS_MAX_LENGTH),
+);
+
+// Team overview commands (Puff Collab). Internal: only the TeamOverview service
+// dispatches them, after checking project membership, and it fills `memberId`
+// from the authenticated session so a member can only set their own focus.
+const ProjectBriefUpdateCommand = Schema.Struct({
+  type: Schema.Literal("project.brief.update"),
+  commandId: CommandId,
+  projectId: ProjectId,
+  text: ProjectBriefText,
+  createdAt: IsoDateTime,
+});
+
+const ProjectMemberFocusSetCommand = Schema.Struct({
+  type: Schema.Literal("project.member-focus.set"),
+  commandId: CommandId,
+  projectId: ProjectId,
+  memberId: MemberId,
+  // Null clears the member's focus.
+  focus: Schema.NullOr(ProjectMemberFocusText),
+  createdAt: IsoDateTime,
+});
+
 const ThreadCreateCommand = Schema.Struct({
   type: Schema.Literal("thread.create"),
   commandId: CommandId,
@@ -1741,6 +1772,8 @@ const ThreadPullRequestLinkSyncCommand = Schema.Struct({
 });
 
 const InternalOrchestrationCommand = Schema.Union([
+  ProjectBriefUpdateCommand,
+  ProjectMemberFocusSetCommand,
   ThreadAutoSettleCommand,
   ThreadPullRequestSyncCommand,
   ThreadPullRequestLinkSyncCommand,
@@ -1773,6 +1806,8 @@ export const OrchestrationEventType = Schema.Literals([
   "project.created",
   "project.meta-updated",
   "project.deleted",
+  "project.brief-updated",
+  "project.member-focus-set",
   "thread.created",
   "thread.deleted",
   "thread.archived",
@@ -1844,6 +1879,20 @@ export const ProjectMetaUpdatedPayload = Schema.Struct({
 export const ProjectDeletedPayload = Schema.Struct({
   projectId: ProjectId,
   deletedAt: IsoDateTime,
+});
+
+// The author of a brief version or focus change is the event's `metadata.actor`.
+export const ProjectBriefUpdatedPayload = Schema.Struct({
+  projectId: ProjectId,
+  text: Schema.String,
+  updatedAt: IsoDateTime,
+});
+
+export const ProjectMemberFocusSetPayload = Schema.Struct({
+  projectId: ProjectId,
+  memberId: MemberId,
+  focus: Schema.NullOr(Schema.String),
+  updatedAt: IsoDateTime,
 });
 
 export const ThreadCreatedPayload = Schema.Struct({
@@ -2170,6 +2219,16 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("project.deleted"),
     payload: ProjectDeletedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("project.brief-updated"),
+    payload: ProjectBriefUpdatedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("project.member-focus-set"),
+    payload: ProjectMemberFocusSetPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

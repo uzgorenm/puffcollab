@@ -187,6 +187,7 @@ import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
+import * as TeamOverview from "./team/TeamOverview.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -1247,8 +1248,11 @@ const buildAppUnderTest = (options?: {
         };
       }),
       Layer.provideMerge(
-        ThreadAccess.layer.pipe(
-          Layer.provideMerge(TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer()))),
+        Layer.mergeAll(
+          Layer.mock(TeamOverview.TeamOverview)({}),
+          ThreadAccess.layer.pipe(
+            Layer.provideMerge(TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer()))),
+          ),
         ),
       ),
       Layer.provideMerge(ServerSecretStore.layer),

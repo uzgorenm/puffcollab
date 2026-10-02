@@ -40,6 +40,7 @@ import {
   resolveEnvironmentMachineKind,
   type EnvironmentMachineKind,
   type ProjectIconOverride,
+  type ScopedProjectRef,
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -2567,6 +2568,18 @@ export default function Sidebar() {
     },
     [isMobile, router, setOpenMobile],
   );
+  const openTeamOverview = useCallback(
+    (projectRef: ScopedProjectRef) => {
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+      void router.navigate({
+        to: "/team/$environmentId/$projectId",
+        params: { environmentId: projectRef.environmentId, projectId: projectRef.projectId },
+      });
+    },
+    [isMobile, router, setOpenMobile],
+  );
   // Anchor for the scope popup: the header search field, not its icon trigger.
   const headerSearchRef = useRef<HTMLDivElement | null>(null);
   // Safari can send a click after Ctrl+click opens settings. Ignore that one
@@ -4277,6 +4290,9 @@ export default function Sidebar() {
           case "project-settings":
             if (threadProjectGroup) openProjectSettings(threadProjectGroup);
             return;
+          case "team-overview":
+            openTeamOverview(scopeProjectRef(thread.environmentId, thread.projectId));
+            return;
           case "new-thread-on-branch": {
             // Explicit branch carry-over: reuse the thread's worktree when it
             // has one, otherwise its branch on the local checkout.
@@ -4462,6 +4478,7 @@ export default function Sidebar() {
       handleMultiSelectContextMenu,
       markThreadUnread,
       openProjectSettings,
+      openTeamOverview,
       projectScopeKey,
       projectByKey,
       serverConfigs,

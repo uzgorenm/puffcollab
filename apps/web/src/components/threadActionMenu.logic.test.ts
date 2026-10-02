@@ -47,7 +47,15 @@ describe("buildThreadActionMenuItems", () => {
           titleRegeneration: false,
         },
       }),
-    ).toEqual(["rename", "mark-unread", "copy", "project-settings", "archive", "delete"]);
+    ).toEqual([
+      "rename",
+      "mark-unread",
+      "copy",
+      "project-settings",
+      "team-overview",
+      "archive",
+      "delete",
+    ]);
   });
 
   it("groups project settings with utility actions before archive", () => {
@@ -58,7 +66,8 @@ describe("buildThreadActionMenuItems", () => {
       label: "Project settings",
       icon: "settings",
     });
-    expect(items[copyIndex + 2]?.id).toBe("archive");
+    expect(items[copyIndex + 2]?.id).toBe("team-overview");
+    expect(items[copyIndex + 3]?.id).toBe("archive");
   });
 
   it("offers project filtering only for surfaces with a scoped thread list", () => {

@@ -37,6 +37,19 @@ import {
   TeamMembersError,
 } from "./members.ts";
 import {
+  ProjectBriefHistoryInput,
+  ProjectBriefHistoryResult,
+  ProjectBriefUpdateInput,
+  ProjectBriefVersion,
+  ProjectMemberFocusSetInput,
+  ProjectMemberFocusSetResult,
+  TeamActivityPageInput,
+  TeamActivityPageResult,
+  TeamOverviewError,
+  TeamOverviewStreamItem,
+  TeamOverviewSubscribeInput,
+} from "./teamOverview.ts";
+import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
@@ -321,6 +334,12 @@ export const WS_METHODS = {
   projectMembersAdd: "projectMembers.add",
   projectMembersRemove: "projectMembers.remove",
 
+  // Team overview (Puff Collab)
+  teamOverviewActivityPage: "teamOverview.activityPage",
+  teamOverviewBriefHistory: "teamOverview.briefHistory",
+  teamOverviewUpdateBrief: "teamOverview.updateBrief",
+  teamOverviewSetFocus: "teamOverview.setFocus",
+
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
 
@@ -479,6 +498,7 @@ export const WS_METHODS = {
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
   subscribeDeviceState: "subscribeDeviceState",
   subscribeServerConfig: "subscribeServerConfig",
+  subscribeTeamOverview: "subscribeTeamOverview",
   subscribeServerLifecycle: "subscribeServerLifecycle",
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
@@ -1086,6 +1106,41 @@ const WsProjectMembersRemoveRpc = Rpc.make(WS_METHODS.projectMembersRemove, {
   error: TeamMembersRpcError,
 });
 
+const TeamOverviewRpcError = Schema.Union([TeamOverviewError, EnvironmentAuthorizationError]);
+
+const WsTeamOverviewActivityPageRpc = Rpc.make(WS_METHODS.teamOverviewActivityPage, {
+  payload: TeamActivityPageInput,
+  success: TeamActivityPageResult,
+  error: TeamOverviewRpcError,
+});
+
+const WsTeamOverviewBriefHistoryRpc = Rpc.make(WS_METHODS.teamOverviewBriefHistory, {
+  payload: ProjectBriefHistoryInput,
+  success: ProjectBriefHistoryResult,
+  error: TeamOverviewRpcError,
+});
+
+const WsTeamOverviewUpdateBriefRpc = Rpc.make(WS_METHODS.teamOverviewUpdateBrief, {
+  payload: ProjectBriefUpdateInput,
+  success: ProjectBriefVersion,
+  error: TeamOverviewRpcError,
+});
+
+// Always sets the caller's own focus; the server takes the member from the session.
+const WsTeamOverviewSetFocusRpc = Rpc.make(WS_METHODS.teamOverviewSetFocus, {
+  payload: ProjectMemberFocusSetInput,
+  success: ProjectMemberFocusSetResult,
+  error: TeamOverviewRpcError,
+});
+
+// Brief, member focus, and recent activity for one project: a snapshot, then deltas.
+const WsSubscribeTeamOverviewRpc = Rpc.make(WS_METHODS.subscribeTeamOverview, {
+  payload: TeamOverviewSubscribeInput,
+  success: TeamOverviewStreamItem,
+  error: TeamOverviewRpcError,
+  stream: true,
+});
+
 const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: LaunchEditorInput,
   error: Schema.Union([ExternalLauncherError, EnvironmentAuthorizationError]),
@@ -1613,6 +1668,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectMembersListRpc,
   WsProjectMembersAddRpc,
   WsProjectMembersRemoveRpc,
+  WsTeamOverviewActivityPageRpc,
+  WsTeamOverviewBriefHistoryRpc,
+  WsTeamOverviewUpdateBriefRpc,
+  WsTeamOverviewSetFocusRpc,
+  WsSubscribeTeamOverviewRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,

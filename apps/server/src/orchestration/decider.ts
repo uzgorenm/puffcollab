@@ -375,6 +375,48 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    // Team overview: authorization happens before dispatch (TeamOverview service).
+    case "project.brief.update":
+    case "project.member-focus.set": {
+      const project = yield* requireProject({
+        readModel,
+        command,
+        projectId: command.projectId,
+      });
+      if (project.deletedAt !== null) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Project '${command.projectId}' was deleted.`,
+        });
+      }
+      const base = yield* withEventBase({
+        aggregateKind: "project",
+        aggregateId: command.projectId,
+        occurredAt: command.createdAt,
+        commandId: command.commandId,
+      });
+      return command.type === "project.brief.update"
+        ? {
+            ...base,
+            type: "project.brief-updated" as const,
+            payload: {
+              projectId: command.projectId,
+              text: command.text,
+              updatedAt: command.createdAt,
+            },
+          }
+        : {
+            ...base,
+            type: "project.member-focus-set" as const,
+            payload: {
+              projectId: command.projectId,
+              memberId: command.memberId,
+              focus: command.focus,
+              updatedAt: command.createdAt,
+            },
+          };
+    }
+
     case "thread.create": {
       yield* requireProject({
         readModel,

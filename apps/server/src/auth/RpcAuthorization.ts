@@ -127,6 +127,13 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.projectMembersList]: AuthOrchestrationReadScope,
   [WS_METHODS.projectMembersAdd]: AuthAccessWriteScope,
   [WS_METHODS.projectMembersRemove]: AuthAccessWriteScope,
+  // Any project member reads the overview and writes the brief and their own focus;
+  // the TeamOverview service checks membership.
+  [WS_METHODS.teamOverviewActivityPage]: AuthOrchestrationReadScope,
+  [WS_METHODS.teamOverviewBriefHistory]: AuthOrchestrationReadScope,
+  [WS_METHODS.teamOverviewUpdateBrief]: AuthOrchestrationOperateScope,
+  [WS_METHODS.teamOverviewSetFocus]: AuthOrchestrationOperateScope,
+  [WS_METHODS.subscribeTeamOverview]: AuthOrchestrationReadScope,
   [WS_METHODS.shellOpenInEditor]: AuthOrchestrationOperateScope,
   [WS_METHODS.filesystemBrowse]: AuthOrchestrationReadScope,
   [WS_METHODS.agentSessionsScan]: AuthOrchestrationReadScope,

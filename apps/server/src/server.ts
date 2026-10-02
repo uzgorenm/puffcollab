@@ -131,6 +131,7 @@ import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
+import * as TeamOverview from "./team/TeamOverview.ts";
 import {
   connectHttpApiLayer,
   pendingServiceUpdateExists,
@@ -511,6 +512,7 @@ const ProviderInstallationRefreshLive = Layer.effectDiscard(
 );
 
 const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
+  Layer.provideMerge(TeamOverview.layer),
   Layer.provideMerge(ProviderInstallationRefreshLive),
   Layer.provideMerge(ReplayMarkers.layer),
   Layer.provideMerge(ProviderAuthServiceLive),
