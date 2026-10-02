@@ -25,6 +25,18 @@ import {
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
+  Member,
+  MemberCredentialResult,
+  MemberIdInput,
+  MembersAddInput,
+  MembersListResult,
+  MembersRevokeAccessResult,
+  ProjectMemberInput,
+  ProjectMembersInput,
+  ProjectMembersResult,
+  TeamMembersError,
+} from "./members.ts";
+import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
@@ -298,6 +310,16 @@ export const WS_METHODS = {
   projectsWriteFile: "projects.writeFile",
   projectsEnsureScratch: "projects.ensureScratch",
   projectsCreateNew: "projects.createNew",
+
+  // Team members (Puff Collab)
+  membersList: "members.list",
+  membersAdd: "members.add",
+  membersRemove: "members.remove",
+  membersIssueCredential: "members.issueCredential",
+  membersRevokeAccess: "members.revokeAccess",
+  projectMembersList: "projectMembers.list",
+  projectMembersAdd: "projectMembers.add",
+  projectMembersRemove: "projectMembers.remove",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -1013,6 +1035,57 @@ const WsProjectsCreateNewRpc = Rpc.make(WS_METHODS.projectsCreateNew, {
   error: Schema.Union([OrchestrationDispatchCommandError, EnvironmentAuthorizationError]),
 });
 
+const TeamMembersRpcError = Schema.Union([TeamMembersError, EnvironmentAuthorizationError]);
+
+const WsMembersListRpc = Rpc.make(WS_METHODS.membersList, {
+  payload: Schema.Struct({}),
+  success: MembersListResult,
+  error: TeamMembersRpcError,
+});
+
+const WsMembersAddRpc = Rpc.make(WS_METHODS.membersAdd, {
+  payload: MembersAddInput,
+  success: Member,
+  error: TeamMembersRpcError,
+});
+
+// Removing a member also revokes their sessions and unredeemed credentials.
+const WsMembersRemoveRpc = Rpc.make(WS_METHODS.membersRemove, {
+  payload: MemberIdInput,
+  success: Member,
+  error: TeamMembersRpcError,
+});
+
+const WsMembersIssueCredentialRpc = Rpc.make(WS_METHODS.membersIssueCredential, {
+  payload: MemberIdInput,
+  success: MemberCredentialResult,
+  error: TeamMembersRpcError,
+});
+
+const WsMembersRevokeAccessRpc = Rpc.make(WS_METHODS.membersRevokeAccess, {
+  payload: MemberIdInput,
+  success: MembersRevokeAccessResult,
+  error: TeamMembersRpcError,
+});
+
+const WsProjectMembersListRpc = Rpc.make(WS_METHODS.projectMembersList, {
+  payload: ProjectMembersInput,
+  success: ProjectMembersResult,
+  error: TeamMembersRpcError,
+});
+
+const WsProjectMembersAddRpc = Rpc.make(WS_METHODS.projectMembersAdd, {
+  payload: ProjectMemberInput,
+  success: ProjectMembersResult,
+  error: TeamMembersRpcError,
+});
+
+const WsProjectMembersRemoveRpc = Rpc.make(WS_METHODS.projectMembersRemove, {
+  payload: ProjectMemberInput,
+  success: ProjectMembersResult,
+  error: TeamMembersRpcError,
+});
+
 const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: LaunchEditorInput,
   error: Schema.Union([ExternalLauncherError, EnvironmentAuthorizationError]),
@@ -1532,6 +1605,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsSearchEntriesRpc,
   WsProjectsEnsureScratchRpc,
   WsProjectsCreateNewRpc,
+  WsMembersListRpc,
+  WsMembersAddRpc,
+  WsMembersRemoveRpc,
+  WsMembersIssueCredentialRpc,
+  WsMembersRevokeAccessRpc,
+  WsProjectMembersListRpc,
+  WsProjectMembersAddRpc,
+  WsProjectMembersRemoveRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,

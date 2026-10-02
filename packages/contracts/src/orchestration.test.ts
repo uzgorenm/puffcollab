@@ -843,6 +843,34 @@ it.effect("decodes a legacy message-sent event persisted without turnId", () =>
   }),
 );
 
+// Events persisted before team members carry no actor; replay must still decode them.
+it.effect("decodes events with and without a team member actor", () =>
+  Effect.gen(function* () {
+    const base = {
+      sequence: 540,
+      eventId: "event-actor-1",
+      aggregateKind: "project",
+      aggregateId: "project-1",
+      type: "project.deleted",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      commandId: "cmd-actor-1",
+      causationEventId: null,
+      correlationId: "cmd-actor-1",
+      payload: { projectId: "project-1", deletedAt: "2026-01-01T00:00:00.000Z" },
+    };
+    const legacy = yield* decodeOrchestrationEvent({
+      ...base,
+      metadata: { origin: { surface: "web" } },
+    });
+    assert.strictEqual(legacy.metadata.actor, undefined);
+    const stamped = yield* decodeOrchestrationEvent({
+      ...base,
+      metadata: { actor: "member-ada" },
+    });
+    assert.strictEqual(stamped.metadata.actor, "member-ada");
+  }),
+);
+
 it.effect("decodes thread archived and unarchived events", () =>
   Effect.gen(function* () {
     const archived = yield* decodeOrchestrationEvent({

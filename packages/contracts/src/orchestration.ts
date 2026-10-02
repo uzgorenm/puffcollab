@@ -13,6 +13,7 @@ import {
   CommandId,
   EventId,
   IsoDateTime,
+  MemberId,
   MessageId,
   NonNegativeInt,
   PositiveInt,
@@ -581,6 +582,9 @@ export const OrchestrationMessage = Schema.Struct({
   streaming: Schema.Boolean,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  // The member whose command produced the message (from event `metadata.actor`).
+  // Absent on provider messages and on messages recorded before team members.
+  createdBy: Schema.optional(MemberId),
 });
 export type OrchestrationMessage = typeof OrchestrationMessage.Type;
 
@@ -842,6 +846,10 @@ export const OrchestrationThread = Schema.Struct({
   // Survives manual settle, un-settle, and activity: only the user clears it.
   // Optional so payloads from older servers still decode.
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  // The member who created the thread (its owner). Null for threads created
+  // before team members or by server-originated commands. Optional on the
+  // wire so payloads from older servers still decode.
+  createdBy: Schema.optional(Schema.NullOr(MemberId)),
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
@@ -913,6 +921,8 @@ export const OrchestrationThreadShell = Schema.Struct({
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  // See OrchestrationThread.createdBy.
+  createdBy: Schema.optional(Schema.NullOr(MemberId)),
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
   session: Schema.NullOr(OrchestrationSession),
@@ -2026,6 +2036,13 @@ export const OrchestrationEventMetadata = Schema.Struct({
    */
   deferredTurn: Schema.optional(Schema.Boolean),
   origin: Schema.optional(OrchestrationClientOrigin),
+  /**
+   * The team member whose authenticated session dispatched the command that
+   * produced this event. Stamped by the orchestration engine from the
+   * session, never from client input. Absent on provider/server-originated
+   * events and on events persisted before team members existed.
+   */
+  actor: Schema.optional(MemberId),
 });
 export type OrchestrationEventMetadata = typeof OrchestrationEventMetadata.Type;
 

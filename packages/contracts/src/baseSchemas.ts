@@ -146,6 +146,9 @@ export const TurnId = makeEntityId("TurnId");
 export type TurnId = typeof TurnId.Type;
 export const AuthSessionId = makeEntityId("AuthSessionId");
 export type AuthSessionId = typeof AuthSessionId.Type;
+/** An environment-level team member (Puff Collab). See `members.ts`. */
+export const MemberId = makeEntityId("MemberId");
+export type MemberId = typeof MemberId.Type;
 export const RpcClientId = NonNegativeInt.pipe(Schema.brand("RpcClientId"));
 export type RpcClientId = typeof RpcClientId.Type;
 
