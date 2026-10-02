@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 
 import { type ComposerThreadTarget, useComposerThreadDraft } from "~/composerDraftStore";
 import { useRelatedWorkReviewStore } from "~/relatedWorkReviewStore";
+import { useThreadCollabFocusRequested, useThreadCollabFocusStore } from "~/threadCollabFocusStore";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useThreadDetail } from "~/state/entities";
 import { useEnvironmentMembers } from "~/state/members";
@@ -184,6 +185,9 @@ export function RelatedThreadsControl(props: { environmentId: EnvironmentId; thr
   const thread = useThreadDetail(threadRef);
   const reviewRequested = useRelatedWorkReviewStore((state) => state.threadKeys.has(threadKey));
   const clearReview = useRelatedWorkReviewStore((state) => state.clear);
+  // The command palette's "Link related thread" opens the popover.
+  const paletteRequested = useThreadCollabFocusRequested(threadKey, "related-threads");
+  const clearPaletteRequest = useThreadCollabFocusStore((state) => state.clear);
   const { members, currentMemberId } = useEnvironmentMembers(props.environmentId);
   const resolved = useResolvedRelatedThreads(props.environmentId, thread);
   const ownerName = useOwnerName(props.environmentId);
@@ -203,7 +207,8 @@ export function RelatedThreadsControl(props: { environmentId: EnvironmentId; thr
   // Only ask for suggestions while the owner has the popover open or just
   // shared the thread.
   const suggestions = useRelatedWorkSuggestions({
-    environmentId: (open || reviewRequested) && isOwner ? props.environmentId : null,
+    environmentId:
+      (open || paletteRequested || reviewRequested) && isOwner ? props.environmentId : null,
     projectId: thread?.projectId ?? null,
     text: draftText,
     excludeThreadId: props.threadId,
@@ -211,10 +216,14 @@ export function RelatedThreadsControl(props: { environmentId: EnvironmentId; thr
 
   // Opens by itself right after sharing, once there is something to link;
   // closing it ends the review.
-  const popoverOpen = open || (reviewRequested && isOwner && suggestions.length > 0);
+  const popoverOpen =
+    open || paletteRequested || (reviewRequested && isOwner && suggestions.length > 0);
   const onOpenChange = (next: boolean) => {
     setOpen(next);
-    if (!next) clearReview(threadKey);
+    if (!next) {
+      clearReview(threadKey);
+      if (paletteRequested) clearPaletteRequest();
+    }
   };
 
   // Single-person environments have nobody's work to relate to.

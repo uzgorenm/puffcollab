@@ -3,7 +3,11 @@
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import {
   canCreateProjectInEnvironment,
   getCloneDestinationBrowsePath,
@@ -64,6 +68,8 @@ import {
   SquarePenIcon,
   SunIcon,
   TextSearchIcon,
+  GitCompareArrowsIcon,
+  LockIcon,
   UsersIcon,
 } from "lucide-react";
 import {
@@ -200,6 +206,9 @@ import { Kbd, KbdGroup } from "./ui/kbd";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
+import { useThreadCollaborationActions } from "../hooks/useThreadCollaborationActions";
+import { useThreadCollaboration } from "../state/threadCollaboration";
+import { useThreadCollabFocusStore } from "../threadCollabFocusStore";
 import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
@@ -749,6 +758,12 @@ function OpenCommandPaletteDialog(props: {
   const availableSettingsSearchItems = useAvailableSettingsSearchItems();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
+  const activeThreadCollaboration = useThreadCollaboration(
+    activeThread?.environmentId ?? null,
+    activeThread,
+  );
+  const { setThreadVisibility } = useThreadCollaborationActions();
+  const requestThreadCollabFocus = useThreadCollabFocusStore((state) => state.focus);
   const projects = useProjects();
   const referenceThreadRef =
     pathname === "/pull-requests"
@@ -2015,6 +2030,51 @@ function OpenCommandPaletteDialog(props: {
         if (refreshed._tag === "Failure") throw squashAtomCommandFailure(refreshed);
       },
     });
+  }
+
+  // Puff Collab: only once the environment has a team, and only the actions
+  // the viewer can take on this thread (the owner shares and links, a
+  // follower comments).
+  if (activeThread !== null && activeThreadCollaboration.teamEnabled) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    if (activeThreadCollaboration.isOwner) {
+      const shared = activeThreadCollaboration.shared;
+      actionItems.push({
+        kind: "action",
+        value: "action:thread-sharing",
+        searchTerms: ["share", "sharing", "private", "team", "project members", "visibility"],
+        title: shared ? "Make thread private" : "Share thread with project",
+        icon: shared ? (
+          <LockIcon className={ITEM_ICON_CLASS} />
+        ) : (
+          <UsersIcon className={ITEM_ICON_CLASS} />
+        ),
+        run: async () => {
+          await setThreadVisibility(threadRef, shared ? "private" : "shared");
+        },
+      });
+      actionItems.push({
+        kind: "action",
+        value: "action:link-related-thread",
+        searchTerms: ["related", "link", "complementary", "alternative", "overlap", "team"],
+        title: "Link related thread",
+        icon: <GitCompareArrowsIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          requestThreadCollabFocus(scopedThreadKey(threadRef), "related-threads");
+        },
+      });
+    } else {
+      actionItems.push({
+        kind: "action",
+        value: "action:comment-on-thread",
+        searchTerms: ["comment", "note", "reply", "team", "follow"],
+        title: "Comment on thread",
+        icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          requestThreadCollabFocus(scopedThreadKey(threadRef), "comment");
+        },
+      });
+    }
   }
 
   actionItems.push({
