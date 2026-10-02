@@ -94,12 +94,6 @@ const seedThread = (input: {
     yield* sql`UPDATE projection_threads SET visibility = ${input.visibility} WHERE thread_id = ${threadId}`;
   });
 
-// Stands in for the shared-threads feature's projection of thread visibility.
-const addVisibilityColumn = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  yield* sql`ALTER TABLE projection_threads ADD COLUMN visibility TEXT`;
-});
-
 const setup = Effect.gen(function* () {
   const team = yield* TeamAccess.TeamAccess;
   const alice = yield* team.addMember({ username: "alice", displayName: "Alice", role: "member" });
@@ -109,7 +103,6 @@ const setup = Effect.gen(function* () {
     yield* team.addProjectMember({ projectId: PROJECT, memberId: member.memberId });
     yield* team.addProjectMember({ projectId: OTHER_PROJECT, memberId: member.memberId });
   }
-  yield* addVisibilityColumn;
   yield* seedThread({
     id: "bob-shared",
     title: "OAuth login redirect loop",
@@ -217,17 +210,6 @@ it.layer(NodeServices.layer)("RelatedWork.suggest", (it) => {
         text: DRAFT,
       });
       expect(outsider.suggestions).toEqual([]);
-    }).pipe(Effect.provide(testLayer)),
-  );
-
-  it.effect("suggests nothing while threads have no visibility column", () =>
-    Effect.gen(function* () {
-      const relatedWork = yield* RelatedWork.RelatedWork;
-      const result = yield* relatedWork.suggest(OWNER_MEMBER_ID, {
-        projectId: PROJECT,
-        text: DRAFT,
-      });
-      expect(result.suggestions).toEqual([]);
     }).pipe(Effect.provide(testLayer)),
   );
 });

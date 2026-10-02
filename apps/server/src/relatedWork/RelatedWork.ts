@@ -75,15 +75,6 @@ const make = Effect.gen(function* () {
         Effect.mapError((cause) => new RelatedWorkPersistenceError({ operation, cause })),
       );
 
-  // Thread visibility is projected by the shared-threads feature. Until its
-  // column exists every thread is private, so there is nothing to suggest.
-  const hasVisibilityColumn = sql<{ readonly name: string }>`
-    PRAGMA table_info(projection_threads)
-  `.pipe(
-    Effect.map((columns) => columns.some((column) => column.name === "visibility")),
-    persistence("visibilityColumn"),
-  );
-
   const listCandidates = (memberId: MemberId, input: RelatedWorkSuggestInput) =>
     sql<CandidateRow>`
       SELECT
@@ -116,7 +107,6 @@ const make = Effect.gen(function* () {
       const empty: RelatedWorkSuggestResult = { suggestions: [] };
       if (tokenize(input.text).size < 2) return empty;
       if (!(yield* teamAccess.isProjectMember(memberId, input.projectId))) return empty;
-      if (!(yield* hasVisibilityColumn)) return empty;
       const candidates = yield* listCandidates(memberId, input);
       const ranked = rankRelatedWork(input.text, candidates, input.limit ?? DEFAULT_LIMIT);
       return {
