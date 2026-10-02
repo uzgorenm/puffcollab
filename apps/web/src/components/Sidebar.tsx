@@ -123,6 +123,8 @@ import {
   useThreadSelectionStore,
 } from "../threadSelectionStore";
 import { useThreadActions } from "../hooks/useThreadActions";
+import { useThreadCollaborationActions } from "../hooks/useThreadCollaborationActions";
+import { readThreadCollaboration } from "../state/threadCollaboration";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
@@ -2241,6 +2243,7 @@ export default function Sidebar() {
     archiveThread,
     deleteThread,
   } = useThreadActions();
+  const { setThreadVisibility } = useThreadCollaborationActions();
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -4242,6 +4245,7 @@ export default function Sidebar() {
                 titleRegeneration: supportsTitleRegeneration,
               },
               snoozePresets,
+              collaboration: readThreadCollaboration(thread.environmentId, thread),
             }),
             position,
           ),
@@ -4326,6 +4330,13 @@ export default function Sidebar() {
             }
             return;
           }
+          case "visibility:private":
+          case "visibility:shared":
+            await setThreadVisibility(
+              threadRef,
+              clicked.value === "visibility:shared" ? "shared" : "private",
+            );
+            return;
           case "rename":
             startThreadRename(threadRef, thread.title);
             return;
@@ -4453,6 +4464,7 @@ export default function Sidebar() {
       serverConfigs,
       setProjectScopeKey,
       setThreadAutoSettle,
+      setThreadVisibility,
       startThreadRename,
       updateThreadMetadata,
       timestampFormat,

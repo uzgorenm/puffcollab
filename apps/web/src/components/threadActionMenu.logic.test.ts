@@ -166,4 +166,41 @@ describe("buildThreadActionMenuItems", () => {
     );
     expect(archiveItem?.disabled).toBe(true);
   });
+
+  describe("shared threads", () => {
+    const collaboration = {
+      isOwner: true,
+      isAdmin: false,
+      teamEnabled: true,
+      visibility: "private" as const,
+    };
+
+    it("offers the owner a sharing setting with the current choice checked", () => {
+      const items = buildThreadActionMenuItems({ ...baseState, collaboration });
+      const sharing = items.find((item) => item.id === "visibility");
+      expect(sharing?.children?.map((child) => [child.id, child.checked])).toEqual([
+        ["visibility:private", true],
+        ["visibility:shared", false],
+      ]);
+      expect(
+        ids({ ...baseState, collaboration: { ...collaboration, teamEnabled: false } }),
+      ).not.toContain("visibility");
+    });
+
+    it("leaves followers only read-only items, plus archive and delete for admins", () => {
+      const follower = { ...collaboration, isOwner: false };
+      expect(ids({ ...baseState, collaboration: follower })).toEqual([
+        "mark-unread",
+        "copy",
+        "project-settings",
+      ]);
+      expect(ids({ ...baseState, collaboration: { ...follower, isAdmin: true } })).toEqual([
+        "mark-unread",
+        "copy",
+        "project-settings",
+        "archive",
+        "delete",
+      ]);
+    });
+  });
 });

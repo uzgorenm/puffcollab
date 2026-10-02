@@ -41,6 +41,8 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { useThreadActions } from "./useThreadActions";
+import { readThreadCollaboration } from "../state/threadCollaboration";
+import { useThreadCollaborationActions } from "./useThreadCollaborationActions";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -93,6 +95,7 @@ export function useThreadActionMenu(input: {
     archiveThread,
     deleteThread,
   } = useThreadActions();
+  const { setThreadVisibility } = useThreadCollaborationActions();
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -155,6 +158,7 @@ export function useThreadActionMenu(input: {
           isRunning: thread.session?.status === "running" && thread.session.activeTurnId != null,
           supports,
           snoozePresets,
+          collaboration: readThreadCollaboration(threadRef.environmentId, thread),
         });
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -233,6 +237,13 @@ export function useThreadActionMenu(input: {
           case "auto-settle:disabled":
             await reportFailure("Failed to update auto-settle", () =>
               setThreadAutoSettle(threadRef, action === "auto-settle:enabled"),
+            );
+            return;
+          case "visibility:private":
+          case "visibility:shared":
+            await setThreadVisibility(
+              threadRef,
+              action === "visibility:shared" ? "shared" : "private",
             );
             return;
           case "rename":
@@ -344,6 +355,7 @@ export function useThreadActionMenu(input: {
       projects,
       router,
       setThreadAutoSettle,
+      setThreadVisibility,
       settleThread,
       snoozeThread,
       threadRef,
