@@ -186,6 +186,7 @@ import { REPLAY_MARKER_MAX_AGE } from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
+import * as TeamOverview from "./team/TeamOverview.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -1245,7 +1246,12 @@ const buildAppUnderTest = (options?: {
           ),
         };
       }),
-      Layer.provideMerge(TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer()))),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          Layer.mock(TeamOverview.TeamOverview)({}),
+          TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer())),
+        ),
+      ),
       Layer.provideMerge(ServerSecretStore.layer),
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(
