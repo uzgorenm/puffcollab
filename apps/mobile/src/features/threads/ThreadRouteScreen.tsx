@@ -167,7 +167,12 @@ function ThreadHeader(
         subtitle={props.subtitle}
         sidebar={native.sidebar}
         options={native.options}
-        optionsVersion={props.gitControls.projectScripts}
+        // Header item factories are stabilized; the team button's presence and
+        // badge must be part of the version so they reach the native bar.
+        optionsVersion={[
+          props.gitControls.projectScripts,
+          props.teamControl ? props.teamControl.attention : null,
+        ]}
         trailing={
           props.fileInspectorSupported && props.hasThreadCwd ? (
             <ScreenHeaderButton
