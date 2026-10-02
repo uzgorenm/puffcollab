@@ -5,8 +5,10 @@ import {
   CorrelationId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   EventId,
+  MemberId,
   MessageId,
   ProjectId,
+  ThreadCommentId,
   ThreadId,
   type ThreadPullRequestSnapshot,
   ThreadLinkedPullRequest,
@@ -4414,7 +4416,7 @@ it.effect("restores pending turn-start metadata across projection pipeline resta
   ),
 );
 
-const engineLayer = it.layer(
+const makeEngineTestLayer = (prefix: string) =>
   OrchestrationEngineLive.pipe(
     Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
     Layer.provide(ThreadBackgroundLiveness.layer),
@@ -4426,11 +4428,98 @@ const engineLayer = it.layer(
     Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provideMerge(
       ServerConfig.layerTest(process.cwd(), {
-        prefix: "t3-projection-pipeline-engine-dispatch-",
+        prefix,
       }),
     ),
     Layer.provideMerge(NodeServices.layer),
-  ),
+  );
+
+const engineLayer = it.layer(makeEngineTestLayer("t3-projection-pipeline-engine-dispatch-"));
+
+it.layer(Layer.fresh(makeEngineTestLayer("t3-projection-shared-threads-")))(
+  "shared threads projection",
+  (it) => {
+    it.effect("projects thread visibility and comments, and keeps comments out of raw reads", () =>
+      Effect.gen(function* () {
+        const engine = yield* OrchestrationEngineService;
+        const snapshots = yield* ProjectionSnapshotQuery;
+        const createdAt = "2026-01-01T00:00:00.000Z";
+        const projectId = ProjectId.make("project-shared-threads");
+        const threadId = ThreadId.make("thread-shared-threads");
+        const bob = MemberId.make("bob");
+
+        yield* engine.dispatch({
+          type: "project.create",
+          commandId: CommandId.make("cmd-shared-project"),
+          projectId,
+          title: "Shared",
+          workspaceRoot: "/tmp/project-shared-threads",
+          createdAt,
+        });
+        yield* engine.dispatch(
+          {
+            type: "thread.create",
+            commandId: CommandId.make("cmd-shared-thread"),
+            threadId,
+            projectId,
+            title: "Shared thread",
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+            runtimeMode: "full-access",
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            branch: null,
+            worktreePath: null,
+            createdAt,
+            visibility: "shared",
+          },
+          { actor: MemberId.make("ada") },
+        );
+        yield* engine.dispatch(
+          {
+            type: "thread.comment.add",
+            commandId: CommandId.make("cmd-shared-comment"),
+            threadId,
+            commentId: ThreadCommentId.make("comment-shared"),
+            text: "Following along",
+            createdAt,
+          },
+          { actor: bob },
+        );
+
+        const shell = yield* snapshots.getThreadShellById(threadId);
+        assert.equal(Option.getOrThrow(shell).visibility, "shared");
+        const detail = Option.getOrThrow(yield* snapshots.getThreadDetailSnapshot(threadId));
+        assert.deepEqual(detail.thread.comments, [
+          {
+            id: ThreadCommentId.make("comment-shared"),
+            authorId: bob,
+            text: "Following along",
+            createdAt,
+          },
+        ]);
+        const raw = Option.getOrThrow(yield* snapshots.getThreadDetailById(threadId));
+        assert.equal(raw.comments, undefined);
+
+        yield* engine.dispatch({
+          type: "thread.visibility.set",
+          commandId: CommandId.make("cmd-shared-private"),
+          threadId,
+          visibility: "private",
+        });
+        yield* engine.dispatch({
+          type: "thread.comment.delete",
+          commandId: CommandId.make("cmd-shared-comment-delete"),
+          threadId,
+          commentId: ThreadCommentId.make("comment-shared"),
+        });
+        assert.equal(
+          Option.getOrThrow(yield* snapshots.getThreadShellById(threadId)).visibility,
+          "private",
+        );
+        const afterDelete = Option.getOrThrow(yield* snapshots.getThreadDetailSnapshot(threadId));
+        assert.equal(afterDelete.thread.comments, undefined);
+      }),
+    );
+  },
 );
 
 engineLayer("OrchestrationProjectionPipeline via engine dispatch", (it) => {
