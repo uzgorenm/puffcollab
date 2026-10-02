@@ -794,6 +794,18 @@ export const ThreadPullRequestLink = Schema.Struct({
 });
 export type ThreadPullRequestLink = typeof ThreadPullRequestLink.Type;
 
+/**
+ * Thread visibility for team members. `private` threads are seen only by their
+ * owner (and admins); `shared` threads are followed by every member of the
+ * thread's project. Only the owner controls a thread either way.
+ */
+export const ThreadVisibility = Schema.Literals(["private", "shared"]);
+export type ThreadVisibility = typeof ThreadVisibility.Type;
+
+/** A thread is shared only when explicitly marked so; missing means private. */
+export const isThreadShared = (thread: { readonly visibility?: ThreadVisibility | undefined }) =>
+  thread.visibility === "shared";
+
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -850,6 +862,8 @@ export const OrchestrationThread = Schema.Struct({
   // before team members or by server-originated commands. Optional on the
   // wire so payloads from older servers still decode.
   createdBy: Schema.optional(Schema.NullOr(MemberId)),
+  // Who besides the owner can follow the thread. Missing means private.
+  visibility: Schema.optional(ThreadVisibility),
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
@@ -923,6 +937,8 @@ export const OrchestrationThreadShell = Schema.Struct({
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   // See OrchestrationThread.createdBy.
   createdBy: Schema.optional(Schema.NullOr(MemberId)),
+  // See OrchestrationThread.visibility.
+  visibility: Schema.optional(ThreadVisibility),
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
   session: Schema.NullOr(OrchestrationSession),
