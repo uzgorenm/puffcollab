@@ -132,6 +132,7 @@ import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as RelatedWork from "./relatedWork/RelatedWork.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
+import * as WorkspaceAccess from "./team/WorkspaceAccess.ts";
 import * as TeamOverview from "./team/TeamOverview.ts";
 import * as CooperationAnalyst from "./cooperation/CooperationAnalyst.ts";
 import * as CooperationReactor from "./cooperation/CooperationReactor.ts";
@@ -570,6 +571,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(WorkspaceLayerLive),
   Layer.provideMerge(Layer.mergeAll(NativeAppIconResolver.layer, ProjectFaviconResolverLayerLive)),
   Layer.provideMerge(RepositoryIdentityResolverLayerLive),
+  Layer.provideMerge(WorkspaceAccess.layer),
   Layer.provideMerge(ThreadAccess.layer),
   Layer.provideMerge(RelatedWork.layer),
   Layer.provideMerge(TeamAccess.layer),

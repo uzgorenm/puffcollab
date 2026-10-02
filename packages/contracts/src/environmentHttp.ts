@@ -81,6 +81,8 @@ export const EnvironmentOperationForbiddenReason = Schema.Literals([
   // Puff Collab: the member may not issue this command (not the thread's
   // owner, not a project member, or the thread is not visible to them).
   "thread_access_denied",
+  // Puff Collab: the member is not in the project a workspace request names.
+  "project_access_denied",
 ]);
 export type EnvironmentOperationForbiddenReason = typeof EnvironmentOperationForbiddenReason.Type;
 
@@ -553,6 +555,7 @@ class EnvironmentPullRequestsHttpApi extends HttpApiGroup.make("pullRequests").a
       PullRequestOperationError,
       EnvironmentAuthInvalidError,
       EnvironmentScopeRequiredError,
+      EnvironmentOperationForbiddenError,
       EnvironmentInternalError,
     ],
   }).middleware(EnvironmentAuthenticatedAuth),

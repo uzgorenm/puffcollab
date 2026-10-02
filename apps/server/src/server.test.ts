@@ -188,6 +188,7 @@ import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as RelatedWork from "./relatedWork/RelatedWork.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
+import * as WorkspaceAccess from "./team/WorkspaceAccess.ts";
 import * as TeamOverview from "./team/TeamOverview.ts";
 import * as CooperationService from "./cooperation/CooperationService.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
@@ -1253,7 +1254,7 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(
         Layer.mergeAll(
           Layer.mock(TeamOverview.TeamOverview)({}),
-          RelatedWork.layer.pipe(
+          Layer.mergeAll(RelatedWork.layer, WorkspaceAccess.layer).pipe(
             Layer.provideMerge(
               ThreadAccess.layer.pipe(
                 Layer.provideMerge(TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer()))),
@@ -13846,6 +13847,95 @@ it.layer(NodeServices.layer)("team members", (it) => {
         withWsRpcClient(memberWsUrl, (client) => client[WS_METHODS.membersList]({})),
       ).pipe(Effect.timeout("2 seconds"), Effect.result);
       assertTrue(reconnect._tag === "Failure");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("signs a member in through a remote client's token exchange as themselves", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const ownerWsUrl = yield* getWsServerUrl("/ws");
+      const { member, credentials } = yield* Effect.scoped(
+        withWsRpcClient(ownerWsUrl, (client) =>
+          Effect.gen(function* () {
+            const member = yield* client[WS_METHODS.membersAdd]({
+              username: "hedy",
+              displayName: "Hedy",
+              role: "member",
+            });
+            const issue = client[WS_METHODS.membersIssueCredential]({
+              memberId: member.memberId,
+            });
+            return { member, credentials: [yield* issue, yield* issue] };
+          }),
+        ),
+      );
+      const [remote, widened] = credentials;
+
+      // The hosted app, mobile, and desktop's saved environments exchange the
+      // pairing credential for a bearer token with the standard client scopes.
+      const exchanged = yield* exchangeAccessToken(remote?.credential ?? "", {
+        scope: "orchestration:read orchestration:operate terminal:operate review:write relay:read",
+      });
+      assert.equal(exchanged.response.status, 200);
+      const ticketResponse = yield* fetchEffect(
+        yield* getHttpServerUrl("/api/auth/websocket-ticket"),
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${exchanged.body.access_token ?? ""}` },
+        },
+      );
+      const { ticket } = yield* responseJsonEffect<{ readonly ticket: string }>(ticketResponse);
+      const memberWsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(ticket)}`;
+      const roster = yield* Effect.scoped(
+        withWsRpcClient(memberWsUrl, (client) => client[WS_METHODS.membersList]({})),
+      );
+      assert.equal(roster.currentMemberId, member.memberId);
+
+      // A member credential cannot be widened to admin scopes.
+      const widening = yield* exchangeAccessToken(widened?.credential ?? "", {
+        scope: "orchestration:read access:write",
+      });
+      assert.notEqual(widening.response.status, 200);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("keeps members out of folders, projects, and host data they do not belong to", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const ownerWsUrl = yield* getWsServerUrl("/ws");
+      const { memberWsUrl } = yield* connectAsNewMember(ownerWsUrl, "radia");
+      const denied = <A, E extends { readonly _tag: string }>(
+        call: (client: WsRpcClient) => Effect.Effect<A, E>,
+      ) =>
+        Effect.scoped(withWsRpcClient(memberWsUrl, call)).pipe(
+          Effect.flip,
+          Effect.map((error) => error._tag),
+        );
+
+      assert.equal(
+        yield* denied((client) =>
+          client[WS_METHODS.projectsReadFile]({ cwd: "/tmp", relativePath: "secret.txt" }),
+        ),
+        "EnvironmentAuthorizationError",
+      );
+      assert.equal(
+        yield* denied((client) => client[WS_METHODS.vcsSwitchRef]({ cwd: "/", refName: "main" })),
+        "EnvironmentAuthorizationError",
+      );
+      assert.equal(
+        yield* denied((client) =>
+          client[WS_METHODS.pullRequestsDetail]({
+            projectId: defaultProjectId,
+            repository: "t3tools/t3code",
+            number: 1,
+          }),
+        ),
+        "EnvironmentAuthorizationError",
+      );
+      assert.equal(
+        yield* denied((client) => client[WS_METHODS.agentSessionsScan]({})),
+        "EnvironmentAuthorizationError",
+      );
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 });
