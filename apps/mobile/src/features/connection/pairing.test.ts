@@ -51,6 +51,22 @@ describe("extractPairingUrlFromQrPayload", () => {
 });
 
 describe("parsePairingUrl", () => {
+  // Puff Collab: an admin's "Sign-in link" for a team member is an ordinary
+  // one-time pairing credential at /pair, so the phone signs in as that member.
+  it("reads a team member's sign-in link", () => {
+    expect(parsePairingUrl("https://team.example.com/pair#token=member-credential")).toEqual({
+      host: "https://team.example.com",
+      code: "member-credential",
+    });
+  });
+
+  it("round-trips a host typed beside a bare member credential", () => {
+    expect(parsePairingUrl(buildPairingUrl("team.example.com", "member-credential"))).toEqual({
+      host: "https://team.example.com",
+      code: "member-credential",
+    });
+  });
+
   it("reads hosted pairing links into backend host fields", () => {
     expect(
       parsePairingUrl(

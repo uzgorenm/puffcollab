@@ -78,6 +78,8 @@ import { useSelectedThreadRequests } from "../../state/use-selected-thread-reque
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { useThreadComposerState } from "../../state/use-thread-composer-state";
 import { threadEnvironment } from "../../state/threads";
+import { useThreadCollaboration } from "../../state/thread-collaboration";
+import { useCooperationInboxForThread } from "../../state/cooperation";
 import { projectThreadContentPresentation } from "./threadContentPresentation";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
@@ -137,8 +139,16 @@ function ThreadHeader(
       icon: "point.topleft.down.curvedto.point.bottomright.up",
       onPress: props.onOpenGitInspector,
     });
+    if (props.teamControl) {
+      actions.push({
+        accessibilityLabel: props.teamControl.attention ? "Team, notes waiting for you" : "Team",
+        icon: props.teamControl.attention ? "bell.badge" : "person.2",
+        onPress: props.teamControl.onPress,
+      });
+    }
     return actions;
   }, [
+    props.teamControl,
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,
@@ -157,7 +167,12 @@ function ThreadHeader(
         subtitle={props.subtitle}
         sidebar={native.sidebar}
         options={native.options}
-        optionsVersion={props.gitControls.projectScripts}
+        // Header item factories are stabilized; the team button's presence and
+        // badge must be part of the version so they reach the native bar.
+        optionsVersion={[
+          props.gitControls.projectScripts,
+          props.teamControl ? props.teamControl.attention : null,
+        ]}
         trailing={
           props.fileInspectorSupported && props.hasThreadCwd ? (
             <ScreenHeaderButton
@@ -468,6 +483,36 @@ function ThreadRouteContent(
     [knownTerminalSessions, selectedThreadProject?.workspaceRoot],
   );
   const selectedThreadDetailWorktreePath = selectedThreadDetail?.worktreePath ?? null;
+  // Puff Collab: only the owner drives the thread; teammates follow and comment.
+  const collaboration = useThreadCollaboration(
+    selectedThread?.environmentId ?? null,
+    selectedThread,
+  );
+  // The owner's awareness inbox only streams in team environments, for the header badge.
+  const teamInboxItems = useCooperationInboxForThread(
+    collaboration.isOwner && collaboration.teamEnabled
+      ? (selectedThread?.environmentId ?? null)
+      : null,
+    selectedThread?.id ?? null,
+  );
+  const teamControl = useMemo(
+    () =>
+      collaboration.teamEnabled && selectedThread !== null
+        ? {
+            attention: teamInboxItems.length > 0,
+            onPress: () =>
+              navigation.navigate("ThreadTeam", {
+                environmentId: String(selectedThread.environmentId),
+                threadId: String(selectedThread.id),
+              }),
+          }
+        : null,
+    [collaboration.teamEnabled, navigation, selectedThread, teamInboxItems.length],
+  );
+  const follower = useMemo(
+    () => (collaboration.isOwner ? null : { ownerName: collaboration.ownerName }),
+    [collaboration.isOwner, collaboration.ownerName],
+  );
   const handleReconnectEnvironment = useCallback(() => {
     if (!environmentId) {
       return;
@@ -995,9 +1040,12 @@ function ThreadRouteContent(
                 }
               : null
           }
-          activePendingApproval={requests.activePendingApproval}
+          follower={follower}
+          comments={selectedThreadDetail?.comments}
+          // Approvals and questions are the owner's to answer.
+          activePendingApproval={follower ? null : requests.activePendingApproval}
           respondingApprovalId={requests.respondingApprovalId}
-          activePendingUserInput={requests.activePendingUserInput}
+          activePendingUserInput={follower ? null : requests.activePendingUserInput}
           activePendingUserInputDrafts={requests.activePendingUserInputDrafts}
           activePendingUserInputAnswers={requests.activePendingUserInputAnswers}
           respondingUserInputId={requests.respondingUserInputId}
@@ -1055,6 +1103,7 @@ function ThreadRouteContent(
         onOpenGitInspector={handleOpenGitInspector}
         onOpenFilesInspector={handleOpenFilesInspector}
         onReturnToThread={props.onReturnToThread}
+        teamControl={teamControl}
       />
 
       {renderThreadRouteBody()}

@@ -101,3 +101,38 @@ describe("new thread on an existing branch", () => {
     },
   );
 });
+
+describe("thread sharing at creation", () => {
+  const spec = {
+    projectId: ProjectId.make("project"),
+    projectCwd: "/workspace",
+    threadId: "new-thread",
+    commandId: "command",
+    messageId: "message",
+    createdAt: "2026-09-06T00:00:00Z",
+    text: "Add billing exports",
+    uploadedAttachments: [],
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.6-sol" },
+    runtimeMode: "full-access" as const,
+    interactionMode: "default" as const,
+    workspaceMode: "local" as const,
+    branch: null,
+    worktreePath: null,
+    startFromOrigin: false,
+    worktreeBranchName: "unused",
+  };
+
+  it("creates the thread shared only when the owner opted in", () => {
+    expect(
+      buildProjectThreadStartTurnInput({ ...spec, visibility: "shared" }).bootstrap.createThread,
+    ).toMatchObject({ visibility: "shared" });
+    // Private is the server default, so servers without teams get the same payload.
+    for (const visibility of [undefined, "private" as const]) {
+      const createThread = buildProjectThreadStartTurnInput({
+        ...spec,
+        ...(visibility ? { visibility } : {}),
+      }).bootstrap.createThread;
+      expect("visibility" in createThread).toBe(false);
+    }
+  });
+});

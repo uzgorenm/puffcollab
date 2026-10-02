@@ -35,6 +35,9 @@ import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr } from "../../state/use-thread-pr";
+import { useThreadCollaboration } from "../../state/thread-collaboration";
+import { threadRowMenuActionsForViewer } from "../team/team-presentation";
+import { ThreadOwnerBadge } from "../team/ThreadOwnerBadge";
 import { useSwipeRowDormant } from "../home/swipe-row-activation";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
@@ -546,7 +549,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   } = props;
   const snoozedRow = props.snoozed === true;
   const pinnedRow = props.pinned === true;
-  const dormant = useSwipeRowDormant(props.activationKey);
+  // Puff Collab: teammates' threads show their owner; only the owner may
+  // settle, snooze, or otherwise change them, so followers get no swipe.
+  const collaboration = useThreadCollaboration(thread.environmentId, thread);
+  const dormant = useSwipeRowDormant(props.activationKey) || !collaboration.isOwner;
 
   const pr = useThreadPr(thread);
 
@@ -910,6 +916,15 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         >
           {props.projectTitle ?? props.project?.title ?? ""}
         </Text>
+        <ThreadOwnerBadge
+          collaboration={collaboration}
+          textClassName={
+            selected
+              ? selectedThreadRowColors.mutedForegroundClassName
+              : rowAppearance.mutedForegroundClassName
+          }
+          iconTintClassName={rowAppearance.mutedIconTintClassName}
+        />
         {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
         {pinnedRow ? (
           <SymbolView
@@ -1154,6 +1169,15 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               />
             ) : null}
           </View>
+          <ThreadOwnerBadge
+            collaboration={collaboration}
+            textClassName={
+              selected
+                ? selectedThreadRowColors.mutedForegroundClassName
+                : rowAppearance.mutedForegroundClassName
+            }
+            iconTintClassName={rowAppearance.mutedIconTintClassName}
+          />
           {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
           <Text
             className={cn(
@@ -1201,27 +1225,30 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       >
         {(close) => (
           <ControlPillMenu
-            actions={[
-              ...(thread.branch
-                ? [
-                    {
-                      id: "new-thread-on-branch",
-                      title: getThreadListV2NewBranchMenuTitle(thread.branch),
-                      image: "square.and.pencil",
-                    },
-                  ]
-                : []),
-              { id: "copy-thread-id", title: "Copy thread ID", image: "doc.on.doc" },
-              ...(snoozedRow
-                ? snoozedMenuActions
-                : !props.settlementSupported
-                  ? legacyMenuActions
-                  : canUnsettle
-                    ? slimMenuActions
-                    : swipeActions.secondary === "snooze"
-                      ? snoozableCardMenuActions
-                      : cardMenuActions),
-            ]}
+            actions={threadRowMenuActionsForViewer(
+              [
+                ...(thread.branch
+                  ? [
+                      {
+                        id: "new-thread-on-branch",
+                        title: getThreadListV2NewBranchMenuTitle(thread.branch),
+                        image: "square.and.pencil",
+                      },
+                    ]
+                  : []),
+                { id: "copy-thread-id", title: "Copy thread ID", image: "doc.on.doc" },
+                ...(snoozedRow
+                  ? snoozedMenuActions
+                  : !props.settlementSupported
+                    ? legacyMenuActions
+                    : canUnsettle
+                      ? slimMenuActions
+                      : swipeActions.secondary === "snooze"
+                        ? snoozableCardMenuActions
+                        : cardMenuActions),
+              ],
+              collaboration,
+            )}
             onPressAction={handleMenuAction}
             shouldOpenOnLongPress
           >

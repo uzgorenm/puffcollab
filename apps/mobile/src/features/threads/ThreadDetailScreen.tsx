@@ -19,6 +19,7 @@ import type {
   EnvironmentId,
   MessageId,
   ModelSelection,
+  OrchestrationThreadComment,
   OrchestrationThreadShell,
   ProviderApprovalDecision,
   ProviderInteractionMode,
@@ -110,6 +111,7 @@ import {
   ThreadComposer,
 } from "./ThreadComposer";
 import { ThreadFeed } from "./ThreadFeed";
+import { ThreadFollowerComposer } from "../team/ThreadFollowerComposer";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 import { resolveThreadFeedSubmissionAnchor } from "./thread-feed-live-follow";
 
@@ -188,6 +190,14 @@ export interface ThreadDetailScreenProps {
   readonly onSubmitUserInput: () => Promise<unknown>;
   readonly onDismissUserInput: () => Promise<unknown>;
   readonly showContent?: boolean;
+  /**
+   * Puff Collab: set when the viewer follows someone else's thread. The
+   * composer becomes a comment box; callers also withhold approvals and
+   * questions, which only the owner may answer.
+   */
+  readonly follower?: { readonly ownerName: string } | null;
+  /** Teammates' comments, interleaved into the feed by time. */
+  readonly comments?: ReadonlyArray<OrchestrationThreadComment>;
 }
 
 function latestStreamingAssistantMessage(
@@ -943,6 +953,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
               skills={selectedProviderSkills}
               onUseArtifactTemplate={handleUseArtifactTemplate}
               loadEarlier={props.loadEarlier ?? null}
+              comments={props.comments}
             />
           </RenderErrorBoundary>
         </View>
@@ -1072,42 +1083,53 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                     : undefined
                 }
               >
-                <ThreadComposer
-                  editorRef={composerEditorRef}
-                  draftMessage={props.draftMessage}
-                  draftAttachments={props.draftAttachments}
-                  placeholder="Ask the repo agent, or run a command…"
-                  contentMaxWidth={contentMaxWidth}
-                  connectionState={props.connectionStateLabel}
-                  environmentLabel={props.environmentLabel}
-                  selectedThread={props.selectedThread}
-                  hasCompactableConversation={hasCompactableConversation && !props.isCompacting}
-                  serverConfig={props.serverConfig}
-                  queueCount={props.selectedThreadQueueCount}
-                  environmentId={props.environmentId}
-                  projectCwd={props.threadCwd ?? props.projectWorkspaceRoot}
-                  // Follow-ups typed during setup wait in the draft: queueing
-                  // them against a thread id the server may still reject
-                  // would strand them in the outbox.
-                  sendBlockedReason={
-                    props.creationState?.kind === "preparing" ? "Starting the task…" : null
-                  }
-                  bottomInset={composerBottomInset}
-                  onChangeDraftMessage={props.onChangeDraftMessage}
-                  onPickDraftMedia={props.onPickDraftMedia}
-                  onPickDraftFiles={props.onPickDraftFiles}
-                  onNativePasteImages={props.onNativePasteImages}
-                  onNativePasteText={props.onNativePasteText}
-                  onRemoveDraftImage={props.onRemoveDraftImage}
-                  onStopThread={props.onStopThread}
-                  onSendMessage={handleSendMessage}
-                  onShowUsageLimits={showUsageLimits}
-                  onUpdateModelSelection={props.onUpdateThreadModelSelection}
-                  onUpdateRuntimeMode={props.onUpdateThreadRuntimeMode}
-                  onUpdateInteractionMode={props.onUpdateThreadInteractionMode}
-                  onExpandedChange={setComposerExpanded}
-                  onEditorFocusChange={handleComposerFocusChange}
-                />
+                {props.follower ? (
+                  <ThreadFollowerComposer
+                    environmentId={props.environmentId}
+                    threadId={props.selectedThread.id}
+                    ownerName={props.follower.ownerName}
+                    bottomInset={composerBottomInset}
+                    contentMaxWidth={contentMaxWidth}
+                    onFocusChange={handleComposerFocusChange}
+                  />
+                ) : (
+                  <ThreadComposer
+                    editorRef={composerEditorRef}
+                    draftMessage={props.draftMessage}
+                    draftAttachments={props.draftAttachments}
+                    placeholder="Ask the repo agent, or run a command…"
+                    contentMaxWidth={contentMaxWidth}
+                    connectionState={props.connectionStateLabel}
+                    environmentLabel={props.environmentLabel}
+                    selectedThread={props.selectedThread}
+                    hasCompactableConversation={hasCompactableConversation && !props.isCompacting}
+                    serverConfig={props.serverConfig}
+                    queueCount={props.selectedThreadQueueCount}
+                    environmentId={props.environmentId}
+                    projectCwd={props.threadCwd ?? props.projectWorkspaceRoot}
+                    // Follow-ups typed during setup wait in the draft: queueing
+                    // them against a thread id the server may still reject
+                    // would strand them in the outbox.
+                    sendBlockedReason={
+                      props.creationState?.kind === "preparing" ? "Starting the task…" : null
+                    }
+                    bottomInset={composerBottomInset}
+                    onChangeDraftMessage={props.onChangeDraftMessage}
+                    onPickDraftMedia={props.onPickDraftMedia}
+                    onPickDraftFiles={props.onPickDraftFiles}
+                    onNativePasteImages={props.onNativePasteImages}
+                    onNativePasteText={props.onNativePasteText}
+                    onRemoveDraftImage={props.onRemoveDraftImage}
+                    onStopThread={props.onStopThread}
+                    onSendMessage={handleSendMessage}
+                    onShowUsageLimits={showUsageLimits}
+                    onUpdateModelSelection={props.onUpdateThreadModelSelection}
+                    onUpdateRuntimeMode={props.onUpdateThreadRuntimeMode}
+                    onUpdateInteractionMode={props.onUpdateThreadInteractionMode}
+                    onExpandedChange={setComposerExpanded}
+                    onEditorFocusChange={handleComposerFocusChange}
+                  />
+                )}
               </View>
             </View>
           </Animated.View>

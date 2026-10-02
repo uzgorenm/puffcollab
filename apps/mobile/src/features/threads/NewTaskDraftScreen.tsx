@@ -117,6 +117,7 @@ import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/re
 import { enqueueThreadOutboxMessage } from "../../state/thread-outbox";
 import { useRemoteConnectionStatus } from "../../state/use-remote-environment-registry";
 import { useNewTaskFlow } from "./new-task-flow-provider";
+import { NewThreadVisibilityToggle } from "../team/NewThreadVisibilityToggle";
 import { resolveProjectThreadCreationBranch } from "./projectThreadCreationValidation";
 import { resolveDraftProjectSelection } from "./new-task-project-selection";
 import {
@@ -1623,6 +1624,14 @@ export function NewTaskDraftScreen(props: {
         </View>
       ) : null}
       {flow.canChooseWorkspace ? <View className="pb-1">{workspaceControls}</View> : null}
+      {flow.draftKey ? (
+        <NewThreadVisibilityToggle
+          environmentId={selectedProject.environmentId}
+          draftKey={flow.draftKey}
+          queuedVisibility={flow.editingPendingTask?.creation?.visibility}
+          disabled={isComposerInteractionLocked}
+        />
+      ) : null}
 
       {modelUnavailable ? (
         <Pressable

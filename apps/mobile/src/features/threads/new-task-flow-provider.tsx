@@ -64,6 +64,7 @@ import {
   useComposerDraft,
   useStickyComposerModelSelection,
 } from "../../state/use-composer-drafts";
+import { readNewThreadVisibility } from "../../state/new-thread-visibility";
 import {
   capturePendingTaskEditorWriteBaseline,
   flushPendingTaskEditorWrite,
@@ -1071,6 +1072,12 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           // drain with the same origin mode the composer displayed.
           ...((workspaceSelection?.startFromOrigin ?? startFromOrigin)
             ? { startFromOrigin: true }
+            : {}),
+          ...(readNewThreadVisibility(
+            selectedProjectDraftKey,
+            editingPendingTask?.creation?.visibility,
+          ) === "shared"
+            ? { visibility: "shared" as const }
             : {}),
         },
         createdAt: metadata.createdAt,

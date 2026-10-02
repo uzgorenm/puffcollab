@@ -217,6 +217,8 @@ it under **Settings → Environments**). If only a code is shown, they enter the
 host's address and that code there instead. Each link signs in one device; send
 a new one for each phone or computer. Teammates do not sign in to T3 Connect
 themselves; that account stays the owner's.
+Adding and removing members stays on web and desktop; mobile lists them in
+Team overview.
 
 Members see only the projects they created or were added to; use **Projects**
 on a member's row to choose them. Admins see every project. Files, Git actions,
@@ -280,6 +282,15 @@ Findings for your thread appear under **For you**. Admitting a note adds it to
 your composer, where you can edit it before sending; approving a proposed
 message sends it to your agent. Nothing reaches an agent without its owner's
 decision.
+
+### On mobile
+
+In a team environment, a thread's header has a **Team** button. It holds the
+thread's sharing, related threads, cooperation analysis, and notes waiting for
+you, and leads to the project's team overview. The toggle above the new-thread
+composer chooses **Private** or **Shared with project**. On a teammate's thread
+the composer becomes a comment box. Choosing the analysis model stays on web
+and desktop.
 
 ## Using the Desktop App as a Remote Only
 

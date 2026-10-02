@@ -48,6 +48,8 @@ import { GitCommitSheet } from "./features/threads/git/GitCommitSheet";
 import { GitConfirmSheet } from "./features/threads/git/GitConfirmSheet";
 import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
 import { ThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
+import { TeamOverviewRouteScreen } from "./features/team/TeamOverviewRouteScreen";
+import { ThreadTeamRouteScreen } from "./features/team/ThreadTeamRouteScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
 import { HomeRouteScreen } from "./features/home/HomeRouteScreen";
@@ -668,6 +670,24 @@ const RootStackConfig = createNativeStackNavigator({
       screen: ThreadFileScreen,
       linking: `${THREAD_LINKING_PREFIX}/files/:path*`,
       options: SOLID_HEADER_OPTIONS,
+    }),
+    // Puff Collab: a thread's sharing, related work, and cooperation analysis.
+    ThreadTeam: createNativeStackScreen({
+      screen: ThreadTeamRouteScreen,
+      linking: `${THREAD_LINKING_PREFIX}/team`,
+      options: {
+        ...GLASS_HEADER_OPTIONS,
+        title: "Team",
+      },
+    }),
+    // Puff Collab: one project's brief, focus, work, and activity.
+    TeamOverview: createNativeStackScreen({
+      screen: TeamOverviewRouteScreen,
+      linking: "projects/:environmentId/:projectId/team",
+      options: {
+        ...GLASS_HEADER_OPTIONS,
+        title: "Team overview",
+      },
     }),
     ThreadAttachment: createNativeStackScreen({
       screen: AttachmentFileScreen,
