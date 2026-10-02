@@ -205,9 +205,28 @@ An admin opens **Settings → Connections → Team members**, adds a member, and
 sends them the one-time **Sign-in link** (it expires after 24 hours). The
 environment owner is always an admin.
 
+The link works like a device pairing link, so the host must be reachable from
+the teammate's machine or phone first: turn on **Network access** or
+**Tailscale HTTPS** as described above, or use T3 Connect. The link uses the
+address you chose for pairing links; an HTTPS address (Tailscale or T3 Connect)
+opens in the [hosted web app](https://app.t3.codes) with no install. When the
+environment is linked to T3 Connect, **Copy T3 Connect link** gives a link that
+works from anywhere. The teammate opens the link in a browser, or pastes it
+into **Add environment** in the desktop or mobile app (on mobile, scan or paste
+it under **Settings → Environments**). If only a code is shown, they enter the
+host's address and that code there instead. Each link signs in one device; send
+a new one for each phone or computer. Teammates do not sign in to T3 Connect
+themselves; that account stays the owner's.
+
 Members see only the projects they created or were added to; use **Projects**
-on a member's row to choose them. Admins see every project. Messages written by
-someone else show their name above the message.
+on a member's row to choose them. Admins see every project. Files, Git actions,
+previews, and pull requests follow the same rule: a member works in the
+checkouts of their projects and can look at, but not change, a teammate's
+shared worktree. Only admins open files or run Git outside the team's
+projects. These rules organize the team; they are not a sandbox. Every agent
+runs as the host's user account, so only invite people you would trust with
+that account. Messages written by someone else show their name above the
+message.
 
 **Sign out** ends a member's sessions and unused links; **Remove** also stops
 them from signing in again. Their past messages keep their name.

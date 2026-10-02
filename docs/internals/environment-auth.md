@@ -63,6 +63,34 @@ Projects are organizational boundaries, not filesystem sandboxes.
 absolute paths outside a project. This lets clients display artifacts that an
 agent writes in a temporary directory. Relative paths and writes still follow
 the [workspace path rules](../../apps/server/src/workspace/WorkspaceFileSystem.ts).
+For team members who are not admins, [WorkspaceAccess](../../apps/server/src/team/WorkspaceAccess.ts)
+narrows this to their projects' checkouts, so such artifacts do not display
+for them.
+
+## Team members act as themselves on every path
+
+A session's subject decides which team member it acts as; scopes decide what
+kind of call it may make. Pairing preserves the subject through browser
+cookies, token exchange, and WebSocket tickets, so a member credential behaves
+the same over LAN, Tailscale, the hosted app, and a T3 Connect tunnel. The T3
+Connect relay itself only mints credentials for the linked cloud user, the
+environment owner; teammates pair against the tunnel address instead.
+
+Every orchestration command carries an actor that the server derives, never
+one the caller supplies, and passes
+[ThreadAccess](../../apps/server/src/team/ThreadAccess.ts) before dispatch.
+Client commands act as the session's member. MCP tools act as the owner of the
+thread their credential was issued for, read from the read model rather than
+from tool input, so an agent cannot reach another member's thread through a
+tool argument. The project CLI acts as the environment owner. Dispatch the
+server starts on its own, such as from reactors, carries no actor.
+
+RPCs that name a working directory, thread, or project instead of sending a
+command (files, VCS, review, previews, pull requests) go through
+WorkspaceAccess, which resolves a path to the deepest thread worktree or
+project root containing it. New RPCs of that shape need the same gate; the
+scope table alone does not separate teammates. None of this is a sandbox:
+members' agents run as the server account.
 
 Signed asset URLs are bearer credentials. A URL for media on the host grants
 access to one canonical file and its device/inode identity, not its containing directory.
