@@ -194,7 +194,7 @@ const toSettings = (threadId: ThreadId, row: SettingsRow | undefined): Cooperati
         updatedAt: row.updatedAt,
       };
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const snapshots = yield* ProjectionSnapshotQuery;
   const team = yield* TeamAccess.TeamAccess;

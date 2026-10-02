@@ -42,7 +42,7 @@ export const EXPORT_MAX_EVENTS_PER_THREAD = 40;
 export const EXPORT_MAX_SCANNED_EVENTS = 600;
 /** Exported text per event and per thread, after redaction. */
 export const EXPORT_MAX_TEXT_CHARS = 1_500;
-export const EXPORT_MAX_THREAD_CHARS = 24_000;
+const EXPORT_MAX_THREAD_CHARS = 24_000;
 
 /** Event types that carry thread work; everything else never leaves the thread. */
 export const EXPORTABLE_EVENT_TYPES = [
@@ -92,7 +92,7 @@ function clamp(text: string, max: number): string {
 }
 
 /** Bounded, redacted text, or undefined when nothing safe remains. */
-export function exportText(value: string): string | undefined {
+function exportText(value: string): string | undefined {
   const redacted = redactSecrets(value).trim();
   return redacted.length === 0 ? undefined : clamp(redacted, EXPORT_MAX_TEXT_CHARS);
 }

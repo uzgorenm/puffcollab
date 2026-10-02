@@ -23,7 +23,7 @@ import { forkParked } from "../serverActivation.ts";
 import { CooperationAnalyst } from "./CooperationAnalyst.ts";
 import { CooperationService } from "./CooperationService.ts";
 
-export const DEFAULT_COOPERATION_COOLDOWN_MS = 2 * 60_000;
+const DEFAULT_COOPERATION_COOLDOWN_MS = 2 * 60_000;
 
 export class CooperationReactor extends Context.Service<
   CooperationReactor,

@@ -28,7 +28,7 @@ export type { LinkRelatedThreadInput, UnlinkRelatedThreadInput };
 /** Clients wait this long after the last keystroke before asking for suggestions. */
 export const RELATED_WORK_SUGGEST_DEBOUNCE_MS = 400;
 /** Drafts shorter than this are not worth matching. */
-export const RELATED_WORK_MIN_DRAFT_LENGTH = 12;
+const RELATED_WORK_MIN_DRAFT_LENGTH = 12;
 
 /**
  * Related work (Puff Collab): suggestions while starting a thread, and the
@@ -92,7 +92,7 @@ type RelatedThreadShell = Pick<
   "id" | "title" | "createdBy" | "archivedAt" | "settledAt" | "session"
 >;
 
-export function relatedThreadStatus(thread: RelatedThreadShell): RelatedThreadStatus {
+function relatedThreadStatus(thread: RelatedThreadShell): RelatedThreadStatus {
   if (thread.archivedAt !== null) return "archived";
   if (thread.settledAt !== null) return "settled";
   return thread.session?.status === "running" ? "working" : "active";

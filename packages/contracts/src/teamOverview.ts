@@ -76,7 +76,7 @@ export const TeamActivityItem = Schema.Struct({
 });
 export type TeamActivityItem = typeof TeamActivityItem.Type;
 
-export const TEAM_ACTIVITY_PAGE_MAX = 100;
+const TEAM_ACTIVITY_PAGE_MAX = 100;
 export const TEAM_ACTIVITY_SNAPSHOT_LIMIT = 30;
 
 export const TeamOverviewSnapshot = Schema.Struct({

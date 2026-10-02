@@ -40,7 +40,7 @@ export class CooperationAnalyst extends Context.Service<
   }
 >()("t3/cooperation/CooperationAnalyst") {}
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const settings = yield* ServerSettings.ServerSettingsService;
   const registry = yield* ProviderInstanceRegistry;
 

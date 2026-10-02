@@ -17,7 +17,7 @@ import {
  * (or redirection proposals) for the other owner. Every switch defaults off.
  */
 
-export const COOPERATION_FEATURE_TOPIC_MAX_CHARS = 80;
+const COOPERATION_FEATURE_TOPIC_MAX_CHARS = 80;
 export const COOPERATION_SUMMARY_MAX_CHARS = 600;
 export const COOPERATION_NOTE_MAX_CHARS = 600;
 
@@ -188,7 +188,7 @@ export class CooperationError extends Schema.TaggedError<CooperationError>()("Co
  * members' work, so it must run as pure text generation with no tools and no
  * workspace access; drivers whose helper can still execute tools are refused.
  */
-export const COOPERATION_ANALYSIS_DRIVER_SUPPORT: Readonly<
+const COOPERATION_ANALYSIS_DRIVER_SUPPORT: Readonly<
   Record<string, { readonly supported: boolean; readonly reason: string }>
 > = {
   claudeAgent: {

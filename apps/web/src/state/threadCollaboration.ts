@@ -40,7 +40,7 @@ function toView(thread: ThreadOwnershipFacts, roster: EnvironmentMembers): Threa
 }
 
 /** The roster as last loaded, read outside React (menus snapshot at open). */
-export function readEnvironmentMembers(environmentId: EnvironmentId): EnvironmentMembers {
+function readEnvironmentMembers(environmentId: EnvironmentId): EnvironmentMembers {
   const roster = Option.getOrNull(
     AsyncResult.value(appAtomRegistry.get(memberEnvironment.list({ environmentId, input: {} }))),
   );
