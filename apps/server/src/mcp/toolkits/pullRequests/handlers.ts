@@ -19,9 +19,9 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
-import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { makeMcpThreadDispatch } from "../../McpThreadDispatch.ts";
 import {
   type ListThreadPullRequestsResult,
   PullRequestLinkFailedError,
@@ -144,7 +144,7 @@ export function listThreadPullRequests(
 }
 
 const make = Effect.gen(function* () {
-  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+  const dispatchAsThreadOwner = yield* makeMcpThreadDispatch;
   const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const crypto = yield* Crypto.Crypto;
 
@@ -194,24 +194,22 @@ const make = Effect.gen(function* () {
         const thread = yield* requireThread(PullRequestLinkFailedError);
         const project = yield* projectOf(thread, PullRequestLinkFailedError);
         const target = yield* resolveTarget(input, project);
-        const alreadyLinked = yield* engine
-          .dispatch({
-            type: "thread.pull-request.link",
-            commandId: yield* commandId("mcp-pr-link", thread.id),
-            threadId: thread.id,
-            host: target.host,
-            repository: target.repository,
-            number: target.number,
-            url: target.url,
-            source: "agent",
-          })
-          .pipe(
-            Effect.as(false),
-            // The decider rejects a second link of the same PR; for the agent that is
-            // the outcome it asked for, not an error.
-            Effect.catchTags({ OrchestrationCommandInvariantError: () => Effect.succeed(true) }),
-            Effect.catchCause(dispatchFailure(PullRequestLinkFailedError)),
-          );
+        const alreadyLinked = yield* dispatchAsThreadOwner(thread, {
+          type: "thread.pull-request.link",
+          commandId: yield* commandId("mcp-pr-link", thread.id),
+          threadId: thread.id,
+          host: target.host,
+          repository: target.repository,
+          number: target.number,
+          url: target.url,
+          source: "agent",
+        }).pipe(
+          Effect.as(false),
+          // The decider rejects a second link of the same PR; for the agent that is
+          // the outcome it asked for, not an error.
+          Effect.catchTags({ OrchestrationCommandInvariantError: () => Effect.succeed(true) }),
+          Effect.catchCause(dispatchFailure(PullRequestLinkFailedError)),
+        );
         return { ...target, alreadyLinked };
       }),
     unlink_pull_request: (input) =>
@@ -219,20 +217,18 @@ const make = Effect.gen(function* () {
         const thread = yield* requireThread(PullRequestUnlinkFailedError);
         const project = yield* projectOf(thread, PullRequestUnlinkFailedError);
         const target = yield* resolveTarget(input, project);
-        const wasLinked = yield* engine
-          .dispatch({
-            type: "thread.pull-request.unlink",
-            commandId: yield* commandId("mcp-pr-unlink", thread.id),
-            threadId: thread.id,
-            host: target.host,
-            repository: target.repository,
-            number: target.number,
-          })
-          .pipe(
-            Effect.as(true),
-            Effect.catchTags({ OrchestrationCommandInvariantError: () => Effect.succeed(false) }),
-            Effect.catchCause(dispatchFailure(PullRequestUnlinkFailedError)),
-          );
+        const wasLinked = yield* dispatchAsThreadOwner(thread, {
+          type: "thread.pull-request.unlink",
+          commandId: yield* commandId("mcp-pr-unlink", thread.id),
+          threadId: thread.id,
+          host: target.host,
+          repository: target.repository,
+          number: target.number,
+        }).pipe(
+          Effect.as(true),
+          Effect.catchTags({ OrchestrationCommandInvariantError: () => Effect.succeed(false) }),
+          Effect.catchCause(dispatchFailure(PullRequestUnlinkFailedError)),
+        );
         return {
           host: target.host,
           repository: target.repository,

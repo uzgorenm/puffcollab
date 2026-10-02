@@ -19,6 +19,7 @@ import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
@@ -143,6 +144,19 @@ const readPersistedSnapshot = (baseDir: string) =>
     return yield* Effect.gen(function* () {
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       return yield* projectionSnapshotQuery.getSnapshot();
+    }).pipe(Effect.provide(makeProjectPersistenceLayer(config)));
+  });
+
+const readPersistedEventActors = (baseDir: string) =>
+  Effect.gen(function* () {
+    const config = yield* makeCliTestServerConfig(baseDir);
+    return yield* Effect.gen(function* () {
+      const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+      const events = yield* Stream.runCollect(engine.readEvents(0));
+      return Array.from(events, (event): [string, string | undefined] => [
+        event.type,
+        event.metadata?.actor,
+      ]);
     }).pipe(Effect.provide(makeProjectPersistenceLayer(config)));
   });
 
@@ -758,6 +772,12 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
         (project) => project.id === addedProject?.id,
       );
       assert.isTrue((removedProject?.deletedAt ?? null) !== null);
+      // The CLI acts as the environment owner.
+      assert.deepEqual(yield* readPersistedEventActors(baseDir), [
+        ["project.created", "owner"],
+        ["project.meta-updated", "owner"],
+        ["project.deleted", "owner"],
+      ]);
     }),
   );
 
