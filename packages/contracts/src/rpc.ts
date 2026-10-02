@@ -37,6 +37,11 @@ import {
   TeamMembersError,
 } from "./members.ts";
 import {
+  RelatedWorkError,
+  RelatedWorkSuggestInput,
+  RelatedWorkSuggestResult,
+} from "./relatedWork.ts";
+import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
@@ -320,6 +325,9 @@ export const WS_METHODS = {
   projectMembersList: "projectMembers.list",
   projectMembersAdd: "projectMembers.add",
   projectMembersRemove: "projectMembers.remove",
+
+  // Related work (Puff Collab)
+  relatedWorkSuggest: "relatedWork.suggest",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -1068,6 +1076,13 @@ const WsMembersRevokeAccessRpc = Rpc.make(WS_METHODS.membersRevokeAccess, {
   error: TeamMembersRpcError,
 });
 
+// Possibly related shared threads for a draft, filtered to what the caller can see.
+const WsRelatedWorkSuggestRpc = Rpc.make(WS_METHODS.relatedWorkSuggest, {
+  payload: RelatedWorkSuggestInput,
+  success: RelatedWorkSuggestResult,
+  error: Schema.Union([RelatedWorkError, EnvironmentAuthorizationError]),
+});
+
 const WsProjectMembersListRpc = Rpc.make(WS_METHODS.projectMembersList, {
   payload: ProjectMembersInput,
   success: ProjectMembersResult,
@@ -1613,6 +1628,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectMembersListRpc,
   WsProjectMembersAddRpc,
   WsProjectMembersRemoveRpc,
+  WsRelatedWorkSuggestRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,

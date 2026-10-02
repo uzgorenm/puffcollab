@@ -26,6 +26,13 @@ import {
 } from "./baseSchemas.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
+  RelatedThreadLink,
+  ThreadRelatedThreadLinkCommand,
+  ThreadRelatedThreadLinkedPayload,
+  ThreadRelatedThreadUnlinkCommand,
+  ThreadRelatedThreadUnlinkedPayload,
+} from "./relatedWork.ts";
+import {
   PullRequestActor,
   PullRequestChecksState,
   PullRequestMergeability,
@@ -864,6 +871,9 @@ export const OrchestrationThread = Schema.Struct({
   createdBy: Schema.optional(Schema.NullOr(MemberId)),
   // Who besides the owner can follow the thread. Missing means private.
   visibility: Schema.optional(ThreadVisibility),
+  // Related threads the owner linked (see relatedWork.ts). Detail only, not
+  // on the shell. Optional so payloads from older servers still decode.
+  relatedThreads: Schema.optional(Schema.Array(RelatedThreadLink)),
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
@@ -1470,6 +1480,8 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadMetaUpdateCommand,
   ThreadPullRequestLinkCommand,
   ThreadPullRequestUnlinkCommand,
+  ThreadRelatedThreadLinkCommand,
+  ThreadRelatedThreadUnlinkCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
   ThreadTurnStartCommand,
@@ -1504,6 +1516,8 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadMetaUpdateCommand,
   ThreadPullRequestLinkCommand,
   ThreadPullRequestUnlinkCommand,
+  ThreadRelatedThreadLinkCommand,
+  ThreadRelatedThreadUnlinkCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
   ClientThreadTurnStartCommand,
@@ -1733,6 +1747,8 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.pull-request-linked",
   "thread.pull-request-unlinked",
   "thread.pull-request-synced",
+  "thread.related-thread-linked",
+  "thread.related-thread-unlinked",
   "thread.runtime-mode-set",
   "thread.interaction-mode-set",
   "thread.message-sent",
@@ -2164,6 +2180,16 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.pull-request-unlinked"),
     payload: ThreadPullRequestUnlinkedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.related-thread-linked"),
+    payload: ThreadRelatedThreadLinkedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.related-thread-unlinked"),
+    payload: ThreadRelatedThreadUnlinkedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,
