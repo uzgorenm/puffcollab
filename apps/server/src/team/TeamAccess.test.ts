@@ -182,7 +182,28 @@ it.layer(NodeServices.layer)("TeamAccess", (it) => {
           ${member.memberId}
         )
       `;
-      expect(yield* team.canSeeThread(member.memberId, ThreadId.make("thread-b"))).toBe(false);
+      // The owner sees their own thread even outside the project's membership.
+      expect(yield* team.canSeeThread(member.memberId, ThreadId.make("thread-b"))).toBe(true);
+
+      // Someone else's thread in a member project: hidden while private.
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+          branch, worktree_path, latest_turn_id, created_at, updated_at, deleted_at, created_by
+        )
+        VALUES (
+          'thread-c', ${projectA}, 'C', '{}', 'full-access', 'default',
+          NULL, NULL, NULL, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', NULL, NULL
+        )
+      `;
+      const threadC = ThreadId.make("thread-c");
+      expect(yield* team.canSeeThread(member.memberId, threadC)).toBe(false);
+      expect(yield* team.canSeeThread(OWNER_MEMBER_ID, threadC)).toBe(true);
+      yield* sql`UPDATE projection_threads SET visibility = 'shared' WHERE thread_id = 'thread-c'`;
+      expect(yield* team.canSeeThread(member.memberId, threadC)).toBe(true);
+      yield* sql`UPDATE projection_threads SET project_id = ${projectB} WHERE thread_id = 'thread-c'`;
+      expect(yield* team.canSeeThread(member.memberId, threadC)).toBe(false);
+
       expect(yield* team.isThreadCreator(member.memberId, ThreadId.make("thread-b"))).toBe(true);
       expect(yield* team.isThreadCreator(OWNER_MEMBER_ID, ThreadId.make("thread-b"))).toBe(false);
 

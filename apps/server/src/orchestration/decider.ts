@@ -406,6 +406,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           worktreePath: command.worktreePath,
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
+          ...(command.visibility !== undefined ? { visibility: command.visibility } : {}),
         },
       };
     }
@@ -2212,6 +2213,78 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         },
       };
       return [unsettledEvent, activityAppendedEvent];
+    }
+
+    // Puff Collab: who may issue these is decided by ThreadAccess before
+    // dispatch; the decider only checks the thread exists.
+    case "thread.visibility.set": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const occurredAt = yield* nowIso;
+      const unchanged = (thread.visibility ?? "private") === command.visibility;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.visibility-set",
+        payload: {
+          threadId: command.threadId,
+          visibility: command.visibility,
+          updatedAt: unchanged ? thread.updatedAt : occurredAt,
+        },
+      };
+    }
+
+    case "thread.comment.add": {
+      yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.comment-added",
+        payload: {
+          threadId: command.threadId,
+          commentId: command.commentId,
+          text: command.text,
+          createdAt: command.createdAt,
+        },
+      };
+    }
+
+    case "thread.comment.delete": {
+      yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const occurredAt = yield* nowIso;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.comment-deleted",
+        payload: {
+          threadId: command.threadId,
+          commentId: command.commentId,
+          deletedAt: occurredAt,
+        },
+      };
     }
 
     default: {

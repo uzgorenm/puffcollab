@@ -150,7 +150,8 @@ export class TeamAccess extends Context.Service<
       memberId: MemberId,
     ) => Effect.Effect<TeamProjectVisibility, TeamPersistenceError>;
     /**
-     * Whether the member can see the thread, i.e. is a member of its project.
+     * Whether the member can see the thread: its owner and admins always,
+     * members of its project when the thread is shared (see ThreadAccess).
      * Unknown threads report true so callers keep their own not-found handling.
      */
     readonly canSeeThread: (
@@ -291,15 +292,24 @@ const make = Effect.gen(function* () {
       } as const;
     });
 
+  // Owner (creator, or the environment owner for creator-less threads) and
+  // admins always; project members once the owner shares it.
   const canSeeThread: TeamAccess["Service"]["canSeeThread"] = (memberId, threadId) =>
     Effect.gen(function* () {
-      const rows = yield* sql<{ readonly projectId: string }>`
-        SELECT project_id AS "projectId" FROM projection_threads WHERE thread_id = ${threadId}
+      const rows = yield* sql<{
+        readonly projectId: string;
+        readonly createdBy: string | null;
+        readonly visibility: string | null;
+      }>`
+        SELECT project_id AS "projectId", created_by AS "createdBy", visibility
+        FROM projection_threads
+        WHERE thread_id = ${threadId}
       `.pipe(persistence("canSeeThread"));
       const row = rows[0];
-      return row === undefined
-        ? true
-        : yield* isProjectMember(memberId, ProjectId.make(row.projectId));
+      if (row === undefined) return true;
+      if ((row.createdBy ?? OWNER_MEMBER_ID) === memberId) return true;
+      if (row.visibility !== "shared") return yield* isAdmin(memberId);
+      return yield* isProjectMember(memberId, ProjectId.make(row.projectId));
     });
 
   const isThreadCreator: TeamAccess["Service"]["isThreadCreator"] = (memberId, threadId) =>
