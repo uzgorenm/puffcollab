@@ -12,6 +12,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { ChevronDownIcon, EllipsisIcon } from "lucide-react";
+import { CooperationControl } from "./CooperationControl";
 import {
   memo,
   useCallback,
@@ -500,6 +501,9 @@ export const ChatHeader = memo(function ChatHeader({
           "[[data-panel-animations=true]_&]:motion-safe:transition-[padding-right] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
         )}
       >
+        {isServerThread ? (
+          <CooperationControl environmentId={activeThreadEnvironmentId} threadId={activeThreadId} />
+        ) : null}
         <Menu open={actionsCollapsed && actionsOpen} onOpenChange={setActionsOpen}>
           <MenuTrigger
             className={
