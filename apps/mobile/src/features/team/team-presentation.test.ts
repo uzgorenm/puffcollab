@@ -125,7 +125,9 @@ describe("threadRowMenuActionsForViewer", () => {
   ];
 
   it("keeps every action for the owner", () => {
-    expect(threadRowMenuActionsForViewer(actions, { isOwner: true, isAdmin: false })).toBe(actions);
+    expect(threadRowMenuActionsForViewer(actions, { isOwner: true, isAdmin: false })).toEqual(
+      actions,
+    );
   });
 
   it("leaves followers read-only items, plus archive and delete for admins", () => {

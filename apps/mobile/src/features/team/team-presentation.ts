@@ -174,9 +174,9 @@ const OWNER_ONLY_ROW_ACTIONS = new Set([
 export function threadRowMenuActionsForViewer<A extends RowMenuAction>(
   actions: ReadonlyArray<A>,
   viewer: { readonly isOwner: boolean; readonly isAdmin: boolean },
-): ReadonlyArray<A> {
-  if (viewer.isOwner) return actions;
+): A[] {
   return actions.filter((action) => {
+    if (viewer.isOwner) return true;
     const id = action.id ?? "";
     if (OWNER_ONLY_ROW_ACTIONS.has(id) || id.startsWith("snooze:")) return false;
     if (id === "archive" || id === "delete") return viewer.isAdmin;
