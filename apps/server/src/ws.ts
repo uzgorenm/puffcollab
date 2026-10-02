@@ -161,6 +161,7 @@ import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
+import * as CooperationService from "./cooperation/CooperationService.ts";
 import { requiredScopeForRpcMethod, requiredScopeForDeviceList } from "./auth/RpcAuthorization.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
@@ -547,6 +548,7 @@ const makeWsRpcLayer = (
       const threadDeletionReactor = yield* ThreadDeletionReactor;
       const teamAccess = yield* TeamAccess.TeamAccess;
       const currentMemberId = currentMember.memberId;
+      const cooperation = yield* CooperationService.CooperationService;
       const analytics = yield* AnalyticsService.AnalyticsService;
       // Every command dispatched on this connection carries the connecting
       // client's origin and the session's member, including server-generated
@@ -3512,6 +3514,38 @@ const makeWsRpcLayer = (
             WS_METHODS.projectMembersRemove,
             teamAccess.removeProjectMember(input).pipe(Effect.mapError(toTeamMembersError)),
             { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.cooperationSubscribeThread]: (input) =>
+          observeRpcStream(
+            WS_METHODS.cooperationSubscribeThread,
+            cooperation.streamThreadState(currentMemberId, input.threadId),
+            { "rpc.aggregate": "cooperation" },
+          ),
+        [WS_METHODS.cooperationUpdateSettings]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.cooperationUpdateSettings,
+            cooperation.updateSettings(currentMemberId, input),
+            { "rpc.aggregate": "cooperation" },
+          ),
+        [WS_METHODS.cooperationRunAnalysis]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.cooperationRunAnalysis,
+            cooperation
+              .requestAnalysis(currentMemberId, input.threadId)
+              .pipe(Effect.map((runs) => ({ runs }))),
+            { "rpc.aggregate": "cooperation" },
+          ),
+        [WS_METHODS.cooperationSubscribeInbox]: () =>
+          observeRpcStream(
+            WS_METHODS.cooperationSubscribeInbox,
+            cooperation.streamInbox(currentMemberId),
+            { "rpc.aggregate": "cooperation" },
+          ),
+        [WS_METHODS.cooperationResolveItem]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.cooperationResolveItem,
+            cooperation.resolveItem(currentMemberId, input),
+            { "rpc.aggregate": "cooperation" },
           ),
         [WS_METHODS.projectsCreateNew]: (input) =>
           observeRpcEffect(WS_METHODS.projectsCreateNew, createNewProject(input), {

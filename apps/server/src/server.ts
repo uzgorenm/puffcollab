@@ -130,6 +130,9 @@ import * as ReplayMarkers from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
+import * as CooperationAnalyst from "./cooperation/CooperationAnalyst.ts";
+import * as CooperationReactor from "./cooperation/CooperationReactor.ts";
+import * as CooperationService from "./cooperation/CooperationService.ts";
 import {
   connectHttpApiLayer,
   pendingServiceUpdateExists,
@@ -271,6 +274,9 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(StorageCleanup.layer),
   Layer.provideMerge(ThreadDeletionReactorLive),
   Layer.provideMerge(ThreadSettlementReactor.layer),
+  Layer.provideMerge(CooperationReactor.layer),
+  Layer.provideMerge(CooperationService.layer),
+  Layer.provideMerge(CooperationAnalyst.layer),
   Layer.provideMerge(PullRequestSyncReactor.layer),
   Layer.provideMerge(ThreadPullRequestReactor.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
