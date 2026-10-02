@@ -202,11 +202,13 @@ describe("buildThreadActionMenuItems", () => {
         "mark-unread",
         "copy",
         "project-settings",
+        "team-overview",
       ]);
       expect(ids({ ...baseState, collaboration: { ...follower, isAdmin: true } })).toEqual([
         "mark-unread",
         "copy",
         "project-settings",
+        "team-overview",
         "archive",
         "delete",
       ]);
