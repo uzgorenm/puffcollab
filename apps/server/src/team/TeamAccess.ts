@@ -50,7 +50,7 @@ export const memberSubject = (memberId: MemberId): string => `${MEMBER_SUBJECT_P
  * The member an auth-session subject acts as. Non-member subjects are the
  * environment owner's own sessions.
  */
-export const memberIdForSubject = (subject: string): MemberId =>
+const memberIdForSubject = (subject: string): MemberId =>
   subject.startsWith(MEMBER_SUBJECT_PREFIX) && subject.length > MEMBER_SUBJECT_PREFIX.length
     ? MemberId.make(subject.slice(MEMBER_SUBJECT_PREFIX.length))
     : OWNER_MEMBER_ID;
