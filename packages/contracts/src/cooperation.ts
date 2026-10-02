@@ -5,6 +5,7 @@ import {
   IsoDateTime,
   MemberId,
   NonNegativeInt,
+  ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
@@ -143,6 +144,21 @@ export const CooperationResolveInput = Schema.Struct({
   action: CooperationAwarenessAction,
 });
 export type CooperationResolveInput = typeof CooperationResolveInput.Type;
+
+export const CooperationProjectSummariesInput = Schema.Struct({ projectId: ProjectId });
+export type CooperationProjectSummariesInput = typeof CooperationProjectSummariesInput.Type;
+
+/** Latest analysis summaries of a project's shared threads, for its work cards. */
+export const CooperationProjectSummaries = Schema.Struct({
+  summaries: Schema.Array(
+    Schema.Struct({
+      threadId: ThreadId,
+      summary: Schema.String,
+      updatedAt: IsoDateTime,
+    }),
+  ),
+});
+export type CooperationProjectSummaries = typeof CooperationProjectSummaries.Type;
 
 export const CooperationThreadInput = Schema.Struct({
   threadId: ThreadId,

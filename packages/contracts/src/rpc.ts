@@ -28,6 +28,8 @@ import {
   CooperationAwarenessItem,
   CooperationError,
   CooperationInbox,
+  CooperationProjectSummaries,
+  CooperationProjectSummariesInput,
   CooperationResolveInput,
   CooperationRunResult,
   CooperationSettings,
@@ -360,6 +362,7 @@ export const WS_METHODS = {
   cooperationUpdateSettings: "cooperation.updateSettings",
   cooperationRunAnalysis: "cooperation.runAnalysis",
   cooperationSubscribeInbox: "cooperation.subscribeInbox",
+  cooperationSubscribeProjectSummaries: "cooperation.subscribeProjectSummaries",
   cooperationResolveItem: "cooperation.resolveItem",
   // Related work (Puff Collab)
   relatedWorkSuggest: "relatedWork.suggest",
@@ -1202,6 +1205,17 @@ const WsCooperationSubscribeInboxRpc = Rpc.make(WS_METHODS.cooperationSubscribeI
   stream: true,
 });
 
+// Summaries for a project's work cards; one stream per open team overview.
+const WsCooperationSubscribeProjectSummariesRpc = Rpc.make(
+  WS_METHODS.cooperationSubscribeProjectSummaries,
+  {
+    payload: CooperationProjectSummariesInput,
+    success: CooperationProjectSummaries,
+    error: CooperationRpcError,
+    stream: true,
+  },
+);
+
 const WsCooperationResolveItemRpc = Rpc.make(WS_METHODS.cooperationResolveItem, {
   payload: CooperationResolveInput,
   success: CooperationAwarenessItem,
@@ -1744,6 +1758,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsCooperationUpdateSettingsRpc,
   WsCooperationRunAnalysisRpc,
   WsCooperationSubscribeInboxRpc,
+  WsCooperationSubscribeProjectSummariesRpc,
   WsCooperationResolveItemRpc,
   WsRelatedWorkSuggestRpc,
   WsProjectsWriteFileRpc,

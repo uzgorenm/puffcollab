@@ -25,6 +25,7 @@ import { useMemo, useState } from "react";
 
 import { isElectron } from "../../env";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
+import { useCooperationProjectSummaries } from "../../state/cooperation";
 import { useProject, useThreadShellsForProjectRefs } from "../../state/entities";
 import { useEnvironmentMembers } from "../../state/members";
 import { useEnvironmentQuery } from "../../state/query";
@@ -453,14 +454,19 @@ export function TeamOverviewView({
   const threads = useThreadShellsForProjectRefs(projectRefs);
   const { members, currentMemberId } = useEnvironmentMembers(environmentId);
   const { overview, error } = useTeamOverview({ environmentId, projectId });
+  const analysisByThreadId = useCooperationProjectSummaries(environmentId, projectId);
 
   const cards = useMemo(
     () =>
       currentMemberId === null
         ? []
-        : // Analysis summaries plug in here once that feature exposes them.
-          deriveTeamWorkCards({ threads, projectId, memberId: currentMemberId }),
-    [currentMemberId, projectId, threads],
+        : deriveTeamWorkCards({
+            threads,
+            projectId,
+            memberId: currentMemberId,
+            analysisByThreadId,
+          }),
+    [analysisByThreadId, currentMemberId, projectId, threads],
   );
   const threadTitles = useMemo(
     () => new Map(threads.map((thread) => [thread.id as string, thread.title])),

@@ -18,6 +18,7 @@ import {
   CooperationError,
   type CooperationInbox,
   type CooperationLastRun,
+  type CooperationProjectSummaries,
   type CooperationResolveInput,
   type CooperationSettings,
   type CooperationSettingsUpdateInput,
@@ -27,6 +28,7 @@ import {
   MessageId,
   OrchestrationEvent,
   type OrchestrationThreadShell,
+  type ProjectId,
   threadOwnerOf,
   ThreadId,
 } from "@t3tools/contracts";
@@ -113,6 +115,15 @@ export class CooperationService extends Context.Service<
     readonly latestSummaryForThread: (
       threadId: ThreadId,
     ) => Effect.Effect<CooperationAnalysisSummary | null, CooperationError>;
+    /**
+     * Summaries of the project's shared threads (what every project member
+     * may see), now and after every cooperation change, for the team
+     * overview's work cards. Empty for non-members.
+     */
+    readonly streamProjectSummaries: (
+      memberId: MemberId,
+      projectId: ProjectId,
+    ) => Stream.Stream<CooperationProjectSummaries, CooperationError>;
     readonly changes: Stream.Stream<CooperationChange>;
   }
 >()("t3/cooperation/CooperationService") {}
@@ -772,6 +783,42 @@ export const make = Effect.gen(function* () {
     threadId,
   ) => readSummary(threadId);
 
+  // Shared threads are exactly what ThreadAccess shows every project member,
+  // and only shared threads are ever analyzed.
+  const readProjectSummaries = (memberId: MemberId, projectId: ProjectId) =>
+    Effect.gen(function* () {
+      const member = yield* team
+        .isProjectMember(memberId, projectId)
+        .pipe(internal("membership check"));
+      if (!member) return { summaries: [] } satisfies CooperationProjectSummaries;
+      const rows = yield* sql<{
+        readonly threadId: string;
+        readonly summary: string;
+        readonly updatedAt: string;
+      }>`
+        SELECT summaries.thread_id AS "threadId", summaries.summary, summaries.updated_at AS "updatedAt"
+        FROM cooperation_thread_summaries AS summaries
+        JOIN projection_threads AS threads ON threads.thread_id = summaries.thread_id
+        WHERE threads.project_id = ${projectId}
+          AND threads.deleted_at IS NULL
+          AND threads.visibility = 'shared'
+      `.pipe(internal("summary read"));
+      return {
+        summaries: rows.map((row) => ({ ...row, threadId: ThreadId.make(row.threadId) })),
+      } satisfies CooperationProjectSummaries;
+    });
+
+  const streamProjectSummaries: CooperationService["Service"]["streamProjectSummaries"] = (
+    memberId,
+    projectId,
+  ) =>
+    Stream.concat(Stream.make(undefined), changes).pipe(
+      Stream.mapEffect(() => readProjectSummaries(memberId, projectId)),
+      Stream.changesWith(
+        (left, right) => JSON.stringify(left.summaries) === JSON.stringify(right.summaries),
+      ),
+    );
+
   return CooperationService.of({
     getThreadState,
     streamThreadState,
@@ -783,6 +830,7 @@ export const make = Effect.gen(function* () {
     streamInbox,
     resolveItem,
     latestSummaryForThread,
+    streamProjectSummaries,
     changes,
   });
 });

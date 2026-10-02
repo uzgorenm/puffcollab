@@ -3694,6 +3694,12 @@ const makeWsRpcLayer = (
             cooperation.streamInbox(currentMemberId),
             { "rpc.aggregate": "cooperation" },
           ),
+        [WS_METHODS.cooperationSubscribeProjectSummaries]: (input) =>
+          observeRpcStream(
+            WS_METHODS.cooperationSubscribeProjectSummaries,
+            cooperation.streamProjectSummaries(currentMemberId, input.projectId),
+            { "rpc.aggregate": "cooperation" },
+          ),
         [WS_METHODS.cooperationResolveItem]: (input) =>
           observeRpcEffect(
             WS_METHODS.cooperationResolveItem,

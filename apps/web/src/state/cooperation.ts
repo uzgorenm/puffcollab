@@ -1,4 +1,10 @@
-import type { CooperationAwarenessItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type {
+  CooperationAwarenessItem,
+  EnvironmentId,
+  ProjectId,
+  TeamWorkCardAnalysis,
+  ThreadId,
+} from "@t3tools/contracts";
 import { createCooperationEnvironmentAtoms } from "@t3tools/client-runtime/state/cooperation";
 import { useMemo } from "react";
 
@@ -11,6 +17,27 @@ export const cooperationEnvironment = createCooperationEnvironmentAtoms(connecti
 export function useCooperationThreadState(environmentId: EnvironmentId, threadId: ThreadId) {
   return useEnvironmentQuery(
     cooperationEnvironment.threadState({ environmentId, input: { threadId } }),
+  );
+}
+
+const EMPTY_ANALYSIS: ReadonlyMap<ThreadId, TeamWorkCardAnalysis> = new Map();
+
+/** Latest analysis summary per shared thread in a project, for its work cards. */
+export function useCooperationProjectSummaries(
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+): ReadonlyMap<ThreadId, TeamWorkCardAnalysis> {
+  const summaries = useEnvironmentQuery(
+    cooperationEnvironment.projectSummaries({ environmentId, input: { projectId } }),
+  ).data?.summaries;
+  return useMemo(
+    () =>
+      summaries === undefined
+        ? EMPTY_ANALYSIS
+        : new Map(
+            summaries.map(({ threadId, summary, updatedAt }) => [threadId, { summary, updatedAt }]),
+          ),
+    [summaries],
   );
 }
 

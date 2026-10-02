@@ -137,6 +137,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeTeamOverview]: AuthOrchestrationReadScope,
   [WS_METHODS.cooperationSubscribeThread]: AuthOrchestrationReadScope,
   [WS_METHODS.cooperationSubscribeInbox]: AuthOrchestrationReadScope,
+  [WS_METHODS.cooperationSubscribeProjectSummaries]: AuthOrchestrationReadScope,
   [WS_METHODS.cooperationUpdateSettings]: AuthOrchestrationOperateScope,
   [WS_METHODS.cooperationRunAnalysis]: AuthOrchestrationOperateScope,
   [WS_METHODS.cooperationResolveItem]: AuthOrchestrationOperateScope,
