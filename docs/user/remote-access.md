@@ -209,6 +209,16 @@ someone else show their name above the message.
 **Sign out** ends a member's sessions and unused links; **Remove** also stops
 them from signing in again. Their past messages keep their name.
 
+### Related work
+
+While you write the first message of a new thread, T3 Code lists teammates'
+shared threads in the same project that look related, so you can check for
+overlapping work before starting. On a thread you own, the related-threads
+button next to the title shows more suggestions; mark one **Complementary**
+or **Alternative** to link it. Anyone who can see your thread sees its links,
+and a linked thread they cannot open shows as unavailable. Links are only
+shown to people; they are never sent to the agent.
+
 ## Using the Desktop App as a Remote Only
 
 If a computer should only drive work running elsewhere, turn off its local environment. In the
