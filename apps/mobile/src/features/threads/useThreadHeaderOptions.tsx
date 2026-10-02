@@ -11,6 +11,12 @@ import {
 
 type NativeHeaderItems = ReadonlyArray<Record<string, unknown>>;
 
+export interface ThreadTeamHeaderControl {
+  /** The owner has awareness notes or proposals waiting for this thread. */
+  readonly attention: boolean;
+  readonly onPress: () => void;
+}
+
 export function useThreadHeaderOptions(props: {
   readonly title: string;
   readonly subtitle: string;
@@ -18,11 +24,43 @@ export function useThreadHeaderOptions(props: {
   readonly usesNativeHeaderGlass: boolean;
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
   readonly onReturnToThread?: () => void;
+  /** Puff Collab: opens the thread's team details. Absent in single-user environments. */
+  readonly teamControl?: ThreadTeamHeaderControl | null;
 }) {
   const navigation = useNavigation();
   const { layout, panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
-  const threadCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
-  const compactRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
+  const gitRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
+  const gitCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
+  const teamControl = props.teamControl ?? null;
+  const teamHeaderItems = useMemo<NativeHeaderItems>(
+    () =>
+      teamControl === null
+        ? []
+        : [
+            {
+              accessibilityLabel: teamControl.attention ? "Team, notes waiting for you" : "Team",
+              icon: {
+                name: teamControl.attention ? "bell.badge" : "person.2",
+                type: "sfSymbol" as const,
+              },
+              identifier: "thread-right-team",
+              label: "Team",
+              onPress: teamControl.onPress,
+              sharesBackground: true,
+              type: "button" as const,
+              variant: "plain" as const,
+            },
+          ],
+    [teamControl],
+  );
+  const compactRightHeaderItems = useMemo(
+    () => [...gitRightHeaderItems, ...teamHeaderItems],
+    [gitRightHeaderItems, teamHeaderItems],
+  );
+  const threadCenterHeaderItems = useMemo(
+    () => [...gitCenterHeaderItems, ...teamHeaderItems],
+    [gitCenterHeaderItems, teamHeaderItems],
+  );
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [
       {

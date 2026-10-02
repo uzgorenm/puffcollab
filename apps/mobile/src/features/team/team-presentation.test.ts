@@ -14,6 +14,7 @@ import {
   isTeamOverviewConflict,
   teamActivityLine,
   teamMemberName,
+  teamRosterRows,
   threadRowMenuActionsForViewer,
 } from "./team-presentation";
 import { resolveNewThreadVisibility } from "../../state/new-thread-visibility";
@@ -145,5 +146,25 @@ describe("resolveNewThreadVisibility", () => {
     expect(resolveNewThreadVisibility(null, "shared")).toBe("shared");
     expect(resolveNewThreadVisibility("private", "shared")).toBe("private");
     expect(resolveNewThreadVisibility("shared", undefined)).toBe("shared");
+  });
+});
+
+describe("teamRosterRows", () => {
+  it("lists active members with the viewer first, then admins, then by name", () => {
+    const roster = new Map(
+      [
+        member("zed", "Zed"),
+        { ...member("owner", "Owner"), role: "admin" as const },
+        member("ada", "Ada"),
+        { ...member("gone", "Gone"), removedAt: "2026-02-01T00:00:00.000Z" },
+        member("bob", "Bob"),
+      ].map((m) => [m.memberId, m]),
+    );
+    expect(teamRosterRows(roster, bob)).toEqual([
+      { memberId: bob, name: "Bob", detail: "Member · @bob · you" },
+      { memberId: MemberId.make("owner"), name: "Owner", detail: "Admin · @owner" },
+      { memberId: ada, name: "Ada", detail: "Member · @ada" },
+      { memberId: MemberId.make("zed"), name: "Zed", detail: "Member · @zed" },
+    ]);
   });
 });

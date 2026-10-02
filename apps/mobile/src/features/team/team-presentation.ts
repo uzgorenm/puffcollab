@@ -44,6 +44,36 @@ export function teamActivityLine(
     : phrase;
 }
 
+/**
+ * The read-only roster: active members only, the viewer first, then admins,
+ * then by name. Removed members stay in the index for author names but are
+ * not part of the team any more.
+ */
+export function teamRosterRows(
+  members: Members,
+  currentMemberId: MemberId | null,
+): ReadonlyArray<{ readonly memberId: MemberId; readonly name: string; readonly detail: string }> {
+  const rank = (member: Member) =>
+    member.memberId === currentMemberId ? 0 : member.role === "admin" ? 1 : 2;
+  return [...members.values()]
+    .filter((member) => member.removedAt === null)
+    .sort(
+      (left, right) =>
+        rank(left) - rank(right) || left.displayName.localeCompare(right.displayName),
+    )
+    .map((member) => ({
+      memberId: member.memberId,
+      name: member.displayName,
+      detail: [
+        member.role === "admin" ? "Admin" : "Member",
+        `@${member.username}`,
+        member.memberId === currentMemberId ? "you" : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    }));
+}
+
 export const RELATED_THREAD_RELATIONSHIP_LABELS: Readonly<
   Record<RelatedThreadRelationship, string>
 > = {

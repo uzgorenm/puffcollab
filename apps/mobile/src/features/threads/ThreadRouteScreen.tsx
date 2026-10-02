@@ -79,6 +79,7 @@ import { useSelectedThreadWorktree } from "../../state/use-selected-thread-workt
 import { useThreadComposerState } from "../../state/use-thread-composer-state";
 import { threadEnvironment } from "../../state/threads";
 import { useThreadCollaboration } from "../../state/thread-collaboration";
+import { useCooperationInboxForThread } from "../../state/cooperation";
 import { projectThreadContentPresentation } from "./threadContentPresentation";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
 import {
@@ -138,8 +139,16 @@ function ThreadHeader(
       icon: "point.topleft.down.curvedto.point.bottomright.up",
       onPress: props.onOpenGitInspector,
     });
+    if (props.teamControl) {
+      actions.push({
+        accessibilityLabel: props.teamControl.attention ? "Team, notes waiting for you" : "Team",
+        icon: props.teamControl.attention ? "bell.badge" : "person.2",
+        onPress: props.teamControl.onPress,
+      });
+    }
     return actions;
   }, [
+    props.teamControl,
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,
@@ -473,6 +482,27 @@ function ThreadRouteContent(
   const collaboration = useThreadCollaboration(
     selectedThread?.environmentId ?? null,
     selectedThread,
+  );
+  // The owner's awareness inbox only streams in team environments, for the header badge.
+  const teamInboxItems = useCooperationInboxForThread(
+    collaboration.isOwner && collaboration.teamEnabled
+      ? (selectedThread?.environmentId ?? null)
+      : null,
+    selectedThread?.id ?? null,
+  );
+  const teamControl = useMemo(
+    () =>
+      collaboration.teamEnabled && selectedThread !== null
+        ? {
+            attention: teamInboxItems.length > 0,
+            onPress: () =>
+              navigation.navigate("ThreadTeam", {
+                environmentId: String(selectedThread.environmentId),
+                threadId: String(selectedThread.id),
+              }),
+          }
+        : null,
+    [collaboration.teamEnabled, navigation, selectedThread, teamInboxItems.length],
   );
   const follower = useMemo(
     () => (collaboration.isOwner ? null : { ownerName: collaboration.ownerName }),
@@ -1068,6 +1098,7 @@ function ThreadRouteContent(
         onOpenGitInspector={handleOpenGitInspector}
         onOpenFilesInspector={handleOpenFilesInspector}
         onReturnToThread={props.onReturnToThread}
+        teamControl={teamControl}
       />
 
       {renderThreadRouteBody()}
