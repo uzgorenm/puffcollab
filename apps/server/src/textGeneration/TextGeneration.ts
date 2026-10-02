@@ -9,6 +9,7 @@ import type { ProviderInstance } from "../provider/ProviderDriver.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as ThreadTitleLinks from "./ThreadTitleLinks.ts";
 import type { TextGenerationPolicy } from "./TextGenerationPolicy.ts";
+import type { CooperationAnalystOutput } from "./CooperationAnalysisPrompt.ts";
 
 export interface CommitMessageGenerationInput {
   cwd: string;
@@ -75,6 +76,13 @@ export interface ThreadTitleGenerationResult {
   needsRefinement?: boolean | undefined;
 }
 
+export interface CooperationAnalysisGenerationInput {
+  /** Full analyst prompt from `buildCooperationAnalysisPrompt`. */
+  prompt: string;
+  /** What model and provider to use for generation. */
+  modelSelection: ModelSelection;
+}
+
 /**
  * TextGeneration - Service tag for commit and change request text generation.
  */
@@ -106,6 +114,15 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+    /**
+     * Run the Puff Collab cooperation analyst. Only providers that can run a
+     * tool-free, workspace-free helper implement it; see
+     * `COOPERATION_ANALYSIS_DRIVER_SUPPORT` in contracts.
+     */
+    readonly generateCooperationAnalysis?: (
+      input: CooperationAnalysisGenerationInput,
+    ) => Effect.Effect<CooperationAnalystOutput, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 

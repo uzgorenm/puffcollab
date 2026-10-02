@@ -21,6 +21,7 @@ import { applyAntigravityAcpModelSelection } from "../provider/acp/AntigravityAc
 import { removeAntigravitySessionFiles } from "../provider/acp/AntigravitySessionFiles.ts";
 import type { AcpSessionRuntime } from "../provider/acp/AcpSessionRuntime.ts";
 import type * as TextGeneration from "./TextGeneration.ts";
+import { CooperationAnalystOutput } from "./CooperationAnalysisPrompt.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
@@ -405,10 +406,23 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
       };
     });
 
+  // Already runs in an empty temp directory and rejects any tool request.
+  const generateCooperationAnalysis: NonNullable<
+    TextGeneration.TextGeneration["Service"]["generateCooperationAnalysis"]
+  > = Effect.fn("AntigravityTextGeneration.generateCooperationAnalysis")(function* (input) {
+    return yield* runAntigravityJson({
+      operation: "generateCooperationAnalysis",
+      prompt: input.prompt,
+      outputSchema: CooperationAnalystOutput,
+      modelSelection: input.modelSelection,
+    });
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateCooperationAnalysis,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
