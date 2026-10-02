@@ -14,7 +14,7 @@ import type {
   TurnId,
 } from "@t3tools/contracts";
 import { threadPullRequestKeysEqual } from "@t3tools/shared/threadPullRequests";
-import { isImportedAgentSessionMessageId } from "@t3tools/contracts";
+import { isImportedAgentSessionMessageId, OWNER_MEMBER_ID } from "@t3tools/contracts";
 import { compareDateTimeStrings } from "@t3tools/shared/dateTime";
 
 export type ThreadDetailReducerResult =
@@ -133,6 +133,9 @@ export function applyThreadDetailEvent(
           activeOrderKey: null,
           autoSettleDisabledAt: null,
           ...(event.metadata.actor !== undefined ? { createdBy: event.metadata.actor } : {}),
+          ...(event.payload.visibility !== undefined
+            ? { visibility: event.payload.visibility }
+            : {}),
           snoozedUntil: null,
           snoozedAt: null,
           deletedAt: null,
@@ -734,6 +737,54 @@ export function applyThreadDetailEvent(
       return {
         kind: "updated",
         thread: { ...thread, activities, updatedAt: event.occurredAt },
+      };
+    }
+
+    // ── Puff Collab: sharing and teammates' comments ────────────────
+    case "thread.visibility-set":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          visibility: event.payload.visibility,
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
+    case "thread.comment-added": {
+      const comments = thread.comments ?? [];
+      if (comments.some((comment) => comment.id === event.payload.commentId)) {
+        return { kind: "unchanged" };
+      }
+      // Comments do not bump the thread's updatedAt: they are not activity.
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          comments: [
+            ...comments,
+            {
+              id: event.payload.commentId,
+              authorId: event.metadata.actor ?? OWNER_MEMBER_ID,
+              text: event.payload.text,
+              createdAt: event.payload.createdAt,
+            },
+          ],
+        },
+      };
+    }
+
+    case "thread.comment-deleted": {
+      const comments = thread.comments ?? [];
+      if (!comments.some((comment) => comment.id === event.payload.commentId)) {
+        return { kind: "unchanged" };
+      }
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          comments: comments.filter((comment) => comment.id !== event.payload.commentId),
+        },
       };
     }
 
