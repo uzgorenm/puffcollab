@@ -125,6 +125,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.membersIssueCredential]: AuthAccessWriteScope,
   [WS_METHODS.membersRevokeAccess]: AuthAccessWriteScope,
   [WS_METHODS.projectMembersList]: AuthOrchestrationReadScope,
+  [WS_METHODS.relatedWorkSuggest]: AuthOrchestrationReadScope,
   [WS_METHODS.projectMembersAdd]: AuthAccessWriteScope,
   [WS_METHODS.projectMembersRemove]: AuthAccessWriteScope,
   [WS_METHODS.shellOpenInEditor]: AuthOrchestrationOperateScope,

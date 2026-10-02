@@ -46,6 +46,7 @@ import {
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,
+  RelatedWorkError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   ProjectId,
@@ -160,6 +161,7 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import * as RelatedWork from "./relatedWork/RelatedWork.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
 import { requiredScopeForRpcMethod, requiredScopeForDeviceList } from "./auth/RpcAuthorization.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
@@ -546,6 +548,7 @@ const makeWsRpcLayer = (
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const threadDeletionReactor = yield* ThreadDeletionReactor;
       const teamAccess = yield* TeamAccess.TeamAccess;
+      const relatedWork = yield* RelatedWork.RelatedWork;
       const currentMemberId = currentMember.memberId;
       const analytics = yield* AnalyticsService.AnalyticsService;
       // Every command dispatched on this connection carries the connecting
@@ -3512,6 +3515,19 @@ const makeWsRpcLayer = (
             WS_METHODS.projectMembersRemove,
             teamAccess.removeProjectMember(input).pipe(Effect.mapError(toTeamMembersError)),
             { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.relatedWorkSuggest]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.relatedWorkSuggest,
+            relatedWork
+              .suggest(currentMemberId, input)
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new RelatedWorkError({ message: "Failed to suggest related work", cause }),
+                ),
+              ),
+            { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.projectsCreateNew]: (input) =>
           observeRpcEffect(WS_METHODS.projectsCreateNew, createNewProject(input), {
