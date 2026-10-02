@@ -5,6 +5,7 @@ import {
   OrchestrationMessageContext,
   CheckpointRef,
   IsoDateTime,
+  MemberId,
   MessageId,
   NonNegativeInt,
   OrchestrationCheckpointFile,
@@ -114,6 +115,7 @@ const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
     isStreaming: Schema.Number,
     attachments: Schema.NullOr(Schema.fromJsonString(Schema.Array(ChatAttachment))),
     context: Schema.NullOr(Schema.fromJsonString(OrchestrationMessageContext)),
+    createdBy: Schema.optional(Schema.NullOr(MemberId)),
   }),
 );
 const ProjectionTurnStartMessageDbRowSchema = ProjectionThreadMessageDbRowSchema.mapFields(
@@ -589,6 +591,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pin_order_key AS "pinOrderKey",
           active_order_key AS "activeOrderKey",
           auto_settle_disabled_at AS "autoSettleDisabledAt",
+          created_by AS "createdBy",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -637,6 +640,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pin_order_key AS "pinOrderKey",
           active_order_key AS "activeOrderKey",
           auto_settle_disabled_at AS "autoSettleDisabledAt",
+          created_by AS "createdBy",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -712,6 +716,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pin_order_key AS "pinOrderKey",
           active_order_key AS "activeOrderKey",
           auto_settle_disabled_at AS "autoSettleDisabledAt",
+          created_by AS "createdBy",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -740,6 +745,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           attachments_json AS "attachments",
           context_json AS "context",
           is_streaming AS "isStreaming",
+          created_by AS "createdBy",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
         FROM projection_thread_messages
@@ -1316,6 +1322,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pin_order_key AS "pinOrderKey",
           active_order_key AS "activeOrderKey",
           auto_settle_disabled_at AS "autoSettleDisabledAt",
+          created_by AS "createdBy",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -1382,6 +1389,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         attachments_json AS "attachments",
         context_json AS "context",
         is_streaming AS "isStreaming",
+        created_by AS "createdBy",
         created_at AS "createdAt",
         updated_at AS "updatedAt",
         EXISTS (
@@ -1415,6 +1423,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           attachments_json AS "attachments",
           context_json AS "context",
           is_streaming AS "isStreaming",
+          created_by AS "createdBy",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
         FROM projection_thread_messages
@@ -1828,6 +1837,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           attachments_json AS "attachments",
           context_json AS "context",
           is_streaming AS "isStreaming",
+          created_by AS "createdBy",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
         FROM projection_thread_messages
@@ -2241,6 +2251,7 @@ pending_approval_requests AS (
                   streaming: row.isStreaming === 1,
                   createdAt: row.createdAt,
                   updatedAt: row.updatedAt,
+                  ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
                 });
                 messagesByThread.set(row.threadId, threadMessages);
               }
@@ -2392,6 +2403,7 @@ pending_approval_requests AS (
                 pinOrderKey: row.pinOrderKey ?? null,
                 activeOrderKey: row.activeOrderKey ?? null,
                 autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
+                ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
                 titleRegeneration: mapTitleRegeneration(row),
                 titleState: row.titleState,
                 deletedAt: row.deletedAt,
@@ -2638,6 +2650,7 @@ pending_approval_requests AS (
                   pinOrderKey: row.pinOrderKey ?? null,
                   activeOrderKey: row.activeOrderKey ?? null,
                   autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
+                  ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
                   titleRegeneration: mapTitleRegeneration(row),
                   titleState: row.titleState,
                   deletedAt: row.deletedAt,
@@ -2799,6 +2812,7 @@ pending_approval_requests AS (
                         pinOrderKey: row.pinOrderKey ?? null,
                         activeOrderKey: row.activeOrderKey ?? null,
                         autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
+                        ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
                         titleRegeneration: mapTitleRegeneration(row),
                         titleState: row.titleState,
                         session: sessionByThread.get(row.threadId) ?? null,
@@ -2985,6 +2999,7 @@ pending_approval_requests AS (
                   pinOrderKey: row.pinOrderKey ?? null,
                   activeOrderKey: row.activeOrderKey ?? null,
                   autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
+                  ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
                   titleRegeneration: mapTitleRegeneration(row),
                   titleState: row.titleState,
                   session: sessionByThread.get(row.threadId) ?? null,
@@ -3334,6 +3349,7 @@ pending_approval_requests AS (
         pinOrderKey: threadRow.value.pinOrderKey ?? null,
         activeOrderKey: threadRow.value.activeOrderKey ?? null,
         autoSettleDisabledAt: threadRow.value.autoSettleDisabledAt ?? null,
+        ...(threadRow.value.createdBy != null ? { createdBy: threadRow.value.createdBy } : {}),
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         titleState: threadRow.value.titleState,
         session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
@@ -3389,6 +3405,7 @@ pending_approval_requests AS (
         updatedAt: row.updatedAt,
         ...(row.attachments !== null ? { attachments: row.attachments } : {}),
         ...(row.context !== null ? { context: row.context } : {}),
+        ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
       },
       hasOtherUserMessages: row.hasOtherUserMessages === 1,
     }));
@@ -3636,6 +3653,7 @@ pending_approval_requests AS (
         pinOrderKey: threadRow.value.pinOrderKey ?? null,
         activeOrderKey: threadRow.value.activeOrderKey ?? null,
         autoSettleDisabledAt: threadRow.value.autoSettleDisabledAt ?? null,
+        ...(threadRow.value.createdBy != null ? { createdBy: threadRow.value.createdBy } : {}),
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         titleState: threadRow.value.titleState,
         deletedAt: null,
@@ -3654,6 +3672,9 @@ pending_approval_requests AS (
           }
           if (row.context !== null) {
             Object.assign(message, { context: row.context });
+          }
+          if (row.createdBy != null) {
+            Object.assign(message, { createdBy: row.createdBy });
           }
           return message;
         }),

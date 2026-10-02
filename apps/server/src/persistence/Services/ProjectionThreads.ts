@@ -9,6 +9,7 @@
 import {
   CommandId,
   IsoDateTime,
+  MemberId,
   ModelSelection,
   NonNegativeInt,
   ProjectId,
@@ -51,6 +52,8 @@ export const ProjectionThread = Schema.Struct({
   pinOrderKey: Schema.optional(Schema.NullOr(Schema.String)),
   activeOrderKey: Schema.optional(Schema.NullOr(Schema.String)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  // Member who created the thread; see OrchestrationThread.createdBy.
+  createdBy: Schema.optional(Schema.NullOr(MemberId)),
   titleRegenerationRequestId: Schema.optional(Schema.NullOr(CommandId)),
   titleRegenerationStartedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),

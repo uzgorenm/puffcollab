@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
-import { ChatAttachment, OrchestrationMessageContext } from "@t3tools/contracts";
+import { ChatAttachment, MemberId, OrchestrationMessageContext } from "@t3tools/contracts";
 
 import { toPersistenceSqlError } from "../Errors.ts";
 import {
@@ -24,6 +24,7 @@ const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
     isStreaming: Schema.Number,
     attachments: Schema.NullOr(Schema.fromJsonString(Schema.Array(ChatAttachment))),
     context: Schema.NullOr(Schema.fromJsonString(OrchestrationMessageContext)),
+    createdBy: Schema.NullOr(MemberId),
   }),
 );
 const ProjectionThreadMessageExistsDbRowSchema = Schema.Struct({ exists: Schema.Number });
@@ -42,6 +43,7 @@ function toProjectionThreadMessage(
     updatedAt: row.updatedAt,
     ...(row.attachments !== null ? { attachments: row.attachments } : {}),
     ...(row.context !== null ? { context: row.context } : {}),
+    ...(row.createdBy !== null ? { createdBy: row.createdBy } : {}),
   };
 }
 
@@ -65,7 +67,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           context_json,
           is_streaming,
           created_at,
-          updated_at
+          updated_at,
+          created_by
         )
         VALUES (
           ${row.messageId},
@@ -91,7 +94,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           ),
           ${row.isStreaming ? 1 : 0},
           ${row.createdAt},
-          ${row.updatedAt}
+          ${row.updatedAt},
+          ${row.createdBy ?? null}
         )
         ON CONFLICT (message_id)
         DO UPDATE SET
@@ -109,7 +113,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           ),
           is_streaming = excluded.is_streaming,
           created_at = excluded.created_at,
-          updated_at = excluded.updated_at
+          updated_at = excluded.updated_at,
+          created_by = COALESCE(excluded.created_by, projection_thread_messages.created_by)
       `;
     },
   });
@@ -131,7 +136,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           context_json,
           is_streaming,
           created_at,
-          updated_at
+          updated_at,
+          created_by
         )
         VALUES (
           ${row.messageId},
@@ -143,7 +149,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           ${nextContextJson},
           1,
           ${row.createdAt},
-          ${row.updatedAt}
+          ${row.updatedAt},
+          ${row.createdBy ?? null}
         )
         ON CONFLICT (message_id)
         DO UPDATE SET
@@ -160,7 +167,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
             projection_thread_messages.context_json
           ),
           is_streaming = 1,
-          updated_at = excluded.updated_at
+          updated_at = excluded.updated_at,
+          created_by = COALESCE(excluded.created_by, projection_thread_messages.created_by)
       `;
     },
   });
@@ -180,7 +188,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           context_json AS "context",
           is_streaming AS "isStreaming",
           created_at AS "createdAt",
-          updated_at AS "updatedAt"
+          updated_at AS "updatedAt",
+          created_by AS "createdBy"
         FROM projection_thread_messages
         WHERE message_id = ${messageId}
         LIMIT 1
@@ -219,7 +228,8 @@ const makeProjectionThreadMessageRepository = Effect.gen(function* () {
           context_json AS "context",
           is_streaming AS "isStreaming",
           created_at AS "createdAt",
-          updated_at AS "updatedAt"
+          updated_at AS "updatedAt",
+          created_by AS "createdBy"
         FROM projection_thread_messages
         WHERE thread_id = ${threadId}
         ORDER BY created_at ASC, message_id ASC

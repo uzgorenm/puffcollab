@@ -25,6 +25,8 @@ import {
   type OrchestrationThreadStreamItem,
   type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
+  type MemberId,
+  OWNER_MEMBER_ID,
   TerminalNotRunningError,
   type OrchestrationCommand,
   type OrchestrationEvent,
@@ -183,6 +185,7 @@ import * as SourceControlRepositoryService from "./sourceControl/SourceControlRe
 import { REPLAY_MARKER_MAX_AGE } from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import * as TeamAccess from "./team/TeamAccess.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
@@ -1242,7 +1245,7 @@ const buildAppUnderTest = (options?: {
           ),
         };
       }),
-      Layer.provideMerge(makeAuthTestLayer()),
+      Layer.provideMerge(TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer()))),
       Layer.provideMerge(ServerSecretStore.layer),
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(
@@ -13532,3 +13535,255 @@ it.live(
     }).pipe(Effect.provide(NodeServices.layer)),
   120_000,
 );
+
+it.layer(NodeServices.layer)("team members", (it) => {
+  const now = "2026-01-01T00:00:00.000Z";
+  const sharedProjectId = ProjectId.make("project-shared");
+  const privateProjectId = ProjectId.make("project-private");
+  const projectShell = (id: ProjectId) => ({
+    id,
+    title: `Project ${id}`,
+    workspaceRoot: `/tmp/${id}`,
+    defaultModelSelection,
+    scripts: [],
+    createdAt: now,
+    updatedAt: now,
+  });
+  const teamShellSnapshot = {
+    snapshotSequence: 1,
+    projects: [projectShell(sharedProjectId), projectShell(privateProjectId)],
+    threads: [
+      makeDefaultOrchestrationThreadShell({
+        id: ThreadId.make("thread-shared"),
+        projectId: sharedProjectId,
+      }),
+      makeDefaultOrchestrationThreadShell({
+        id: ThreadId.make("thread-private"),
+        projectId: privateProjectId,
+      }),
+    ],
+    updatedAt: now,
+  };
+
+  /** Adds a member through the owner's admin session and connects as them. */
+  const connectAsNewMember = (ownerWsUrl: string, username: string) =>
+    Effect.gen(function* () {
+      const { member, credential } = yield* Effect.scoped(
+        withWsRpcClient(ownerWsUrl, (client) =>
+          Effect.gen(function* () {
+            const member = yield* client[WS_METHODS.membersAdd]({
+              username,
+              displayName: `User ${username}`,
+              role: "member",
+            });
+            const credential = yield* client[WS_METHODS.membersIssueCredential]({
+              memberId: member.memberId,
+            });
+            return { member, credential };
+          }),
+        ),
+      );
+      const memberWsUrl = yield* getWsServerUrl("/ws", { credential: credential.credential });
+      return { member, memberWsUrl };
+    });
+
+  it.effect("stamps the session's member as the actor and ignores client-supplied metadata", () =>
+    Effect.gen(function* () {
+      const actors: Array<MemberId | undefined> = [];
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            dispatch: (_command, options) =>
+              Effect.sync(() => {
+                actors.push(options?.actor);
+                return { sequence: actors.length };
+              }),
+          },
+        },
+      });
+      const ownerWsUrl = yield* getWsServerUrl("/ws");
+      const { member, memberWsUrl } = yield* connectAsNewMember(ownerWsUrl, "ada");
+
+      const metaUpdate = (commandId: string) =>
+        ({
+          type: "project.meta.update",
+          commandId: CommandId.make(commandId),
+          projectId: defaultProjectId,
+          title: "Renamed",
+          // A client trying to claim someone else's identity.
+          metadata: { actor: "owner" },
+        }) as unknown as Parameters<
+          WsRpcClient[typeof ORCHESTRATION_WS_METHODS.dispatchCommand]
+        >[0];
+
+      yield* Effect.scoped(
+        withWsRpcClient(ownerWsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand](metaUpdate("cmd-owner")),
+        ),
+      );
+      yield* Effect.scoped(
+        withWsRpcClient(memberWsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand](metaUpdate("cmd-member")),
+        ),
+      );
+
+      assert.deepEqual(actors, [OWNER_MEMBER_ID, member.memberId]);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("only shows a member the projects they belong to", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          projectionSnapshotQuery: {
+            getShellSnapshot: () => Effect.succeed(teamShellSnapshot),
+          },
+        },
+      });
+      const ownerWsUrl = yield* getWsServerUrl("/ws");
+      const { member, memberWsUrl } = yield* connectAsNewMember(ownerWsUrl, "grace");
+      const firstShellSnapshot = (wsUrl: string) =>
+        Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[ORCHESTRATION_WS_METHODS.subscribeShell]({}).pipe(
+              Stream.take(1),
+              Stream.runCollect,
+            ),
+          ),
+        ).pipe(
+          Effect.map((items) => {
+            const [first] = Array.from(items);
+            assert.equal(first?.kind, "snapshot");
+            return first?.kind === "snapshot" ? first.snapshot : undefined;
+          }),
+        );
+
+      const beforeSharing = yield* firstShellSnapshot(memberWsUrl);
+      assert.deepEqual(beforeSharing?.projects, []);
+      assert.deepEqual(beforeSharing?.threads, []);
+
+      yield* Effect.scoped(
+        withWsRpcClient(ownerWsUrl, (client) =>
+          client[WS_METHODS.projectMembersAdd]({
+            projectId: sharedProjectId,
+            memberId: member.memberId,
+          }),
+        ),
+      );
+      const afterSharing = yield* firstShellSnapshot(memberWsUrl);
+      assert.deepEqual(
+        afterSharing?.projects.map((project) => project.id),
+        [sharedProjectId],
+      );
+      assert.deepEqual(
+        afterSharing?.threads.map((thread) => thread.id),
+        [ThreadId.make("thread-shared")],
+      );
+
+      const ownerView = yield* firstShellSnapshot(ownerWsUrl);
+      assert.deepEqual(
+        ownerView?.projects.map((project) => project.id),
+        [sharedProjectId, privateProjectId],
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("resends a member's shell when an admin shares a project with them", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          projectionSnapshotQuery: {
+            getShellSnapshot: () => Effect.succeed(teamShellSnapshot),
+          },
+        },
+      });
+      const ownerWsUrl = yield* getWsServerUrl("/ws");
+      const { member, memberWsUrl } = yield* connectAsNewMember(ownerWsUrl, "katherine");
+      const subscribed = yield* Deferred.make<void>();
+
+      const items = yield* Effect.scoped(
+        withWsRpcClient(memberWsUrl, (client) =>
+          Effect.gen(function* () {
+            const collected = yield* client[ORCHESTRATION_WS_METHODS.subscribeShell]({}).pipe(
+              Stream.tap(() => Deferred.succeed(subscribed, undefined)),
+              Stream.take(2),
+              Stream.runCollect,
+              Effect.forkScoped,
+            );
+            yield* Deferred.await(subscribed);
+            yield* Effect.scoped(
+              withWsRpcClient(ownerWsUrl, (owner) =>
+                owner[WS_METHODS.projectMembersAdd]({
+                  projectId: sharedProjectId,
+                  memberId: member.memberId,
+                }),
+              ),
+            );
+            return yield* Fiber.join(collected);
+          }),
+        ),
+      );
+
+      const [initial, refreshed] = Array.from(items);
+      assert.equal(initial?.kind, "snapshot");
+      if (initial?.kind === "snapshot") {
+        assert.deepEqual(initial.snapshot.projects, []);
+      }
+      assert.equal(refreshed?.kind, "snapshot");
+      if (refreshed?.kind === "snapshot") {
+        assert.deepEqual(
+          refreshed.snapshot.projects.map((project) => project.id),
+          [sharedProjectId],
+        );
+      }
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("keeps member management admin-only", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const ownerWsUrl = yield* getWsServerUrl("/ws");
+      const { memberWsUrl } = yield* connectAsNewMember(ownerWsUrl, "linus");
+
+      const roster = yield* Effect.scoped(
+        withWsRpcClient(memberWsUrl, (client) => client[WS_METHODS.membersList]({})),
+      );
+      assert.deepEqual(
+        roster.members.map((member) => member.username),
+        ["owner", "linus"],
+      );
+      const addError = yield* Effect.flip(
+        Effect.scoped(
+          withWsRpcClient(memberWsUrl, (client) =>
+            client[WS_METHODS.membersAdd]({
+              username: "mallory",
+              displayName: "Mallory",
+              role: "admin",
+            }),
+          ),
+        ),
+      );
+      assert.equal(addError._tag, "EnvironmentAuthorizationError");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("removing a member revokes their sessions", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+      const ownerWsUrl = yield* getWsServerUrl("/ws");
+      const { member, memberWsUrl } = yield* connectAsNewMember(ownerWsUrl, "barbara");
+
+      const removed = yield* Effect.scoped(
+        withWsRpcClient(ownerWsUrl, (client) =>
+          client[WS_METHODS.membersRemove]({ memberId: member.memberId }),
+        ),
+      );
+      assert.isNotNull(removed.removedAt);
+
+      const reconnect = yield* Effect.scoped(
+        withWsRpcClient(memberWsUrl, (client) => client[WS_METHODS.membersList]({})),
+      ).pipe(Effect.timeout("2 seconds"), Effect.result);
+      assertTrue(reconnect._tag === "Failure");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+});

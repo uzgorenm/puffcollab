@@ -11,6 +11,7 @@
  * @module OrchestrationEngineService
  */
 import type {
+  MemberId,
   OrchestrationClientOrigin,
   OrchestrationCommand,
   OrchestrationEvent,
@@ -63,8 +64,10 @@ export interface OrchestrationEngineShape {
    * Dispatch a validated orchestration command.
    *
    * @param command - Valid orchestration command.
-   * @param options - Optional client origin (surface/app version) stamped into
-   *   the metadata of every event the command produces.
+   * @param options - Optional client origin (surface/app version) and acting
+   *   team member, stamped into the metadata of every event the command
+   *   produces. `actor` must come from the authenticated session, never from
+   *   client input.
    * @returns Effect containing the sequence of the persisted event.
    *
    * Dispatch is serialized through an internal queue and deduplicated via
@@ -72,7 +75,7 @@ export interface OrchestrationEngineShape {
    */
   readonly dispatch: (
     command: OrchestrationCommand,
-    options?: { readonly origin?: OrchestrationClientOrigin },
+    options?: { readonly origin?: OrchestrationClientOrigin; readonly actor?: MemberId },
   ) => Effect.Effect<{ sequence: number }, OrchestrationDispatchError, never>;
 
   /**

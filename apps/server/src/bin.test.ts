@@ -41,6 +41,7 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
+import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
@@ -384,10 +385,14 @@ const withLiveProjectCliServer = <A, E, R>(baseDir: string, run: () => Effect.Ef
       disableLogger: true,
     }).pipe(
       Layer.provideMerge(
-        EnvironmentAuth.layer.pipe(
-          Layer.provideMerge(SqlitePersistenceLayerLive),
-          Layer.provide(ServerEnvironment.identityLayer),
-          Layer.provide(ServerSecretStore.layer),
+        TeamAccess.layer.pipe(
+          Layer.provideMerge(
+            EnvironmentAuth.layer.pipe(
+              Layer.provideMerge(SqlitePersistenceLayerLive),
+              Layer.provide(ServerEnvironment.identityLayer),
+              Layer.provide(ServerSecretStore.layer),
+            ),
+          ),
         ),
       ),
       Layer.provideMerge(makeProjectPersistenceLayer(config)),

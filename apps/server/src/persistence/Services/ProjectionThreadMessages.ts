@@ -8,6 +8,7 @@
  */
 import {
   ChatAttachment,
+  MemberId,
   MessageId,
   OrchestrationMessageContext,
   OrchestrationMessageRole,
@@ -34,6 +35,8 @@ export const ProjectionThreadMessage = Schema.Struct({
   isStreaming: Schema.Boolean,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  // Member whose command produced the message; see OrchestrationMessage.createdBy.
+  createdBy: Schema.optional(MemberId),
 });
 export type ProjectionThreadMessage = typeof ProjectionThreadMessage.Type;
 

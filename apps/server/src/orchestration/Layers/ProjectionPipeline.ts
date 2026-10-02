@@ -515,6 +515,17 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             updatedAt: event.payload.updatedAt,
             deletedAt: null,
           });
+          // The creating member joins the project (admins see every project anyway).
+          if (event.metadata.actor !== undefined) {
+            yield* sql`
+              INSERT OR IGNORE INTO team_project_members (project_id, member_id, added_at)
+              VALUES (${event.payload.projectId}, ${event.metadata.actor}, ${event.payload.createdAt})
+            `.pipe(
+              Effect.mapError(
+                toPersistenceSqlError("ProjectionPipeline.projects:creatorMembership"),
+              ),
+            );
+          }
           return;
 
         case "project.meta-updated": {
@@ -641,6 +652,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             pendingUserInputCount: 0,
             hasActionableProposedPlan: 0,
             deletedAt: null,
+            createdBy: event.metadata.actor ?? null,
           });
           return;
 
@@ -1159,6 +1171,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               text: event.payload.text,
               ...(attachments !== undefined ? { attachments: [...attachments] } : {}),
               ...(event.payload.context !== undefined ? { context: event.payload.context } : {}),
+              ...(event.metadata.actor !== undefined ? { createdBy: event.metadata.actor } : {}),
               createdAt: event.payload.createdAt,
               updatedAt: event.payload.updatedAt,
             });
@@ -1193,6 +1206,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             isStreaming: false,
             createdAt: previousMessage?.createdAt ?? event.payload.createdAt,
             updatedAt: event.payload.updatedAt,
+            ...((event.metadata.actor ?? previousMessage?.createdBy) !== undefined
+              ? { createdBy: event.metadata.actor ?? previousMessage?.createdBy }
+              : {}),
           });
           return;
         }

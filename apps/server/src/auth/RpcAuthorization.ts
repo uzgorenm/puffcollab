@@ -1,6 +1,7 @@
 import {
   type DeviceListInput,
   AuthAccessReadScope,
+  AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthRelayReadScope,
@@ -117,6 +118,15 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.projectsWriteFile]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectsEnsureScratch]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectsCreateNew]: AuthOrchestrationOperateScope,
+  // Everyone reads the roster (author names); only admins change it.
+  [WS_METHODS.membersList]: AuthOrchestrationReadScope,
+  [WS_METHODS.membersAdd]: AuthAccessWriteScope,
+  [WS_METHODS.membersRemove]: AuthAccessWriteScope,
+  [WS_METHODS.membersIssueCredential]: AuthAccessWriteScope,
+  [WS_METHODS.membersRevokeAccess]: AuthAccessWriteScope,
+  [WS_METHODS.projectMembersList]: AuthOrchestrationReadScope,
+  [WS_METHODS.projectMembersAdd]: AuthAccessWriteScope,
+  [WS_METHODS.projectMembersRemove]: AuthAccessWriteScope,
   [WS_METHODS.shellOpenInEditor]: AuthOrchestrationOperateScope,
   [WS_METHODS.filesystemBrowse]: AuthOrchestrationReadScope,
   [WS_METHODS.agentSessionsScan]: AuthOrchestrationReadScope,

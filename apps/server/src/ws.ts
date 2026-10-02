@@ -82,10 +82,17 @@ import {
   WORKTREE_SETUP_ACTIVITY_KIND,
   worktreeSetupActivityId,
   type WorktreeSetupSnapshot,
+  type Member,
+  TeamMembersError,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
-import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/unstable/http";
+import {
+  HttpRouter,
+  HttpServerRequest,
+  HttpServerRespondable,
+  HttpServerResponse,
+} from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
@@ -153,6 +160,7 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+import * as TeamAccess from "./team/TeamAccess.ts";
 import { requiredScopeForRpcMethod, requiredScopeForDeviceList } from "./auth/RpcAuthorization.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
@@ -499,8 +507,22 @@ function readClientAnalyticsProps(request: HttpServerRequest.HttpServerRequest) 
   };
 }
 
+const toTeamMembersError = (error: TeamAccess.TeamAccessError): TeamMembersError =>
+  new TeamMembersError({
+    reason:
+      error._tag === "TeamMemberNotFoundError"
+        ? "not-found"
+        : error._tag === "TeamUsernameTakenError"
+          ? "username-taken"
+          : error._tag === "TeamOwnerImmutableError"
+            ? "owner-immutable"
+            : "internal",
+    message: error.message,
+  });
+
 const makeWsRpcLayer = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
+  currentMember: Member,
   clientOrigin: OrchestrationClientOrigin,
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
@@ -523,19 +545,22 @@ const makeWsRpcLayer = (
             );
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const threadDeletionReactor = yield* ThreadDeletionReactor;
+      const teamAccess = yield* TeamAccess.TeamAccess;
+      const currentMemberId = currentMember.memberId;
       const analytics = yield* AnalyticsService.AnalyticsService;
       // Every command dispatched on this connection carries the connecting
-      // client's origin, including server-generated bootstrap sub-commands:
-      // the client's request caused them.
+      // client's origin and the session's member, including server-generated
+      // bootstrap sub-commands: the client's request caused them. The actor
+      // comes from the authenticated session, never from the command.
       const hasClientOrigin =
         clientOrigin.surface !== undefined || clientOrigin.appVersion !== undefined;
       const dispatchFromClient: OrchestrationEngine.OrchestrationEngineShape["dispatch"] = (
         command,
       ) =>
-        orchestrationEngine.dispatch(
-          command,
-          hasClientOrigin ? { origin: clientOrigin } : undefined,
-        );
+        orchestrationEngine.dispatch(command, {
+          ...(hasClientOrigin ? { origin: clientOrigin } : {}),
+          actor: currentMemberId,
+        });
       const recordClientCommandAnalytics = (command: OrchestrationCommand) => {
         switch (command.type) {
           case "thread.create":
@@ -985,6 +1010,61 @@ const makeWsRpcLayer = (
       // and drops any `sequence <= snapshotSequence` — never skips a coalesced
       // item. The refetch runs with bounded concurrency (order-preserving).
       const SHELL_REFETCH_CONCURRENCY = 8;
+
+      // Team visibility. Admins (including the implicit owner) see every
+      // project; other members only see projects they belong to, and the
+      // threads in them. Membership is read once per coalesced batch: the
+      // projector records a creator's membership in the same transaction that
+      // persists `project.created`, so a batch never races its own project.
+      const seesEveryProject = currentMember.role === "admin";
+      const loadProjectVisibility = teamAccess.projectVisibility(currentMemberId).pipe(
+        Effect.tapError((error) =>
+          Effect.logWarning("team project visibility read failed", { error }),
+        ),
+        Effect.orElseSucceed((): TeamAccess.TeamProjectVisibility => ({
+          all: false,
+          projectIds: new Set(),
+        })),
+      );
+      const filterVisibleShellEvents = (
+        events: ReadonlyArray<OrchestrationShellStreamEvent>,
+      ): Effect.Effect<ReadonlyArray<OrchestrationShellStreamEvent>> =>
+        seesEveryProject ||
+        !events.some(
+          (event) => event.kind === "project-upserted" || event.kind === "thread-upserted",
+        )
+          ? Effect.succeed(events)
+          : loadProjectVisibility.pipe(
+              Effect.map((visibility) =>
+                events.filter((event) =>
+                  event.kind === "project-upserted"
+                    ? TeamAccess.canSeeProject(visibility, event.project.id)
+                    : event.kind === "thread-upserted"
+                      ? TeamAccess.canSeeProject(visibility, event.thread.projectId)
+                      : true,
+                ),
+              ),
+            );
+      const loadVisibleShellSnapshot = projectionSnapshotQuery
+        .getShellSnapshot()
+        .pipe(
+          Effect.flatMap((snapshot) =>
+            seesEveryProject
+              ? Effect.succeed(snapshot)
+              : loadProjectVisibility.pipe(
+                  Effect.map((visibility) =>
+                    TeamAccess.filterByProjectVisibility(snapshot, visibility),
+                  ),
+                ),
+          ),
+        );
+      const canSeeThread = (threadId: ThreadId) =>
+        seesEveryProject
+          ? Effect.succeed(true)
+          : teamAccess
+              .canSeeThread(currentMemberId, threadId)
+              .pipe(Effect.orElseSucceed(() => false));
+
       const coalesceShellEvents = (
         events: ReadonlyArray<ShellEvent>,
       ): Effect.Effect<ReadonlyArray<OrchestrationShellStreamEvent>, never, never> =>
@@ -1002,7 +1082,9 @@ const makeWsRpcLayer = (
           const shellEvents = yield* Effect.forEach(survivors, toShellStreamEvent, {
             concurrency: SHELL_REFETCH_CONCURRENCY,
           });
-          return shellEvents.flatMap((option) => (Option.isSome(option) ? [option.value] : []));
+          return yield* filterVisibleShellEvents(
+            shellEvents.flatMap((option) => (Option.isSome(option) ? [option.value] : [])),
+          );
         });
 
       // Small time/size window over which to coalesce shell events. The window
@@ -1023,7 +1105,9 @@ const makeWsRpcLayer = (
 
       type ShellLiveInput =
         | { readonly kind: "event"; readonly event: ShellEvent }
-        | { readonly kind: "synchronized" };
+        | { readonly kind: "synchronized" }
+        // This member's project visibility changed; resend a fresh snapshot.
+        | { readonly kind: "visibility-changed" };
 
       // A completion marker is queued alongside live event metadata so it cannot
       // overtake an event still waiting in the coalescing window. Split each
@@ -1043,7 +1127,19 @@ const makeWsRpcLayer = (
 
             output.push(...(yield* coalesceShellEvents(pendingEvents)));
             pendingEvents = [];
-            output.push({ kind: "synchronized" });
+            if (input.kind === "synchronized") {
+              output.push({ kind: "synchronized" });
+              continue;
+            }
+            const snapshot = yield* loadVisibleShellSnapshot.pipe(
+              Effect.tapError((cause) =>
+                Effect.logWarning("orchestration shell visibility refresh failed", { cause }),
+              ),
+              Effect.option,
+            );
+            if (Option.isSome(snapshot)) {
+              output.push({ kind: "snapshot", snapshot: snapshot.value });
+            }
           }
 
           output.push(...(yield* coalesceShellEvents(pendingEvents)));
@@ -2262,6 +2358,18 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.searchThreads,
             projectionSnapshotQuery.searchThreads(input).pipe(
+              Effect.flatMap((result) =>
+                seesEveryProject
+                  ? Effect.succeed(result)
+                  : loadProjectVisibility.pipe(
+                      Effect.map((visibility) => ({
+                        ...result,
+                        matches: result.matches.filter((match) =>
+                          TeamAccess.canSeeProject(visibility, match.projectId),
+                        ),
+                      })),
+                    ),
+              ),
               Effect.mapError(
                 (cause) =>
                   new OrchestrationSearchThreadsError({
@@ -2326,6 +2434,22 @@ const makeWsRpcLayer = (
                 ),
                 { startImmediately: true },
               );
+              if (!seesEveryProject) {
+                yield* Effect.forkScoped(
+                  teamAccess.visibilityChanges.pipe(
+                    Stream.filter((memberId) => memberId === currentMemberId),
+                    Stream.runForEach(() =>
+                      liveBudget.retain({ kind: "visibility-changed" as const }).pipe(
+                        Effect.flatMap((item) => Queue.offer(liveBuffer, item)),
+                        Effect.uninterruptible,
+                      ),
+                    ),
+                    Effect.raceFirst(liveBudget.failed),
+                    Effect.catchTags({ OrchestrationGetSnapshotError: () => Effect.void }),
+                  ),
+                  { startImmediately: true },
+                );
+              }
               const coalesceRetainedInputs = (
                 items: ReadonlyArray<RetainedLiveItem<ShellLiveInput>>,
               ) =>
@@ -2338,7 +2462,7 @@ const makeWsRpcLayer = (
                 Stream.flatMap((items) => Stream.fromIterable(items)),
               );
 
-              const loadSnapshot = projectionSnapshotQuery.getShellSnapshot().pipe(
+              const loadSnapshot = loadVisibleShellSnapshot.pipe(
                 Effect.tapError((cause) =>
                   Effect.logError("orchestration shell snapshot load failed", { cause }),
                 ),
@@ -2432,6 +2556,15 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot,
             projectionSnapshotQuery.getArchivedShellSnapshot().pipe(
+              Effect.flatMap((snapshot) =>
+                seesEveryProject
+                  ? Effect.succeed(snapshot)
+                  : loadProjectVisibility.pipe(
+                      Effect.map((visibility) =>
+                        TeamAccess.filterByProjectVisibility(snapshot, visibility),
+                      ),
+                    ),
+              ),
               Effect.tapError((cause) =>
                 Effect.logError("orchestration archived shell snapshot load failed", { cause }),
               ),
@@ -2449,6 +2582,12 @@ const makeWsRpcLayer = (
           observeRpcStreamEffect(
             ORCHESTRATION_WS_METHODS.subscribeThread,
             Effect.gen(function* () {
+              if (!(yield* canSeeThread(input.threadId))) {
+                return yield* new OrchestrationGetSnapshotError({
+                  message: `Thread ${input.threadId} was not found`,
+                  cause: input.threadId,
+                });
+              }
               const isThisThreadDetailEvent = (event: OrchestrationEvent) =>
                 event.aggregateKind === "thread" &&
                 event.aggregateId === input.threadId &&
@@ -3295,9 +3434,85 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "source-control" },
           ),
         [WS_METHODS.projectsEnsureScratch]: () =>
-          observeRpcEffect(WS_METHODS.projectsEnsureScratch, ensureScratchProject, {
-            "rpc.aggregate": "orchestration",
-          }),
+          observeRpcEffect(
+            WS_METHODS.projectsEnsureScratch,
+            ensureScratchProject.pipe(
+              // The environment has one Scratch project; whoever asks for it joins it.
+              Effect.tap((result) =>
+                seesEveryProject
+                  ? Effect.void
+                  : teamAccess
+                      .addProjectMember({ projectId: result.projectId, memberId: currentMemberId })
+                      .pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new OrchestrationDispatchCommandError({
+                              message: "Failed to join the Scratch project.",
+                              cause,
+                            }),
+                        ),
+                      ),
+              ),
+            ),
+            {
+              "rpc.aggregate": "orchestration",
+            },
+          ),
+        [WS_METHODS.membersList]: () =>
+          observeRpcEffect(
+            WS_METHODS.membersList,
+            teamAccess.listMembers().pipe(
+              Effect.map((members) => ({ members, currentMemberId })),
+              Effect.mapError(toTeamMembersError),
+            ),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.membersAdd]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.membersAdd,
+            teamAccess.addMember(input).pipe(Effect.mapError(toTeamMembersError)),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.membersRemove]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.membersRemove,
+            teamAccess.removeMember(input.memberId).pipe(Effect.mapError(toTeamMembersError)),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.membersIssueCredential]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.membersIssueCredential,
+            teamAccess
+              .issueMemberCredential(input.memberId)
+              .pipe(Effect.mapError(toTeamMembersError)),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.membersRevokeAccess]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.membersRevokeAccess,
+            teamAccess.revokeMemberAccess(input.memberId).pipe(Effect.mapError(toTeamMembersError)),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.projectMembersList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectMembersList,
+            teamAccess
+              .listProjectMembers(input.projectId)
+              .pipe(Effect.mapError(toTeamMembersError)),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.projectMembersAdd]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectMembersAdd,
+            teamAccess.addProjectMember(input).pipe(Effect.mapError(toTeamMembersError)),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.projectMembersRemove]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectMembersRemove,
+            teamAccess.removeProjectMember(input).pipe(Effect.mapError(toTeamMembersError)),
+            { "rpc.aggregate": "team" },
+          ),
         [WS_METHODS.projectsCreateNew]: (input) =>
           observeRpcEffect(WS_METHODS.projectsCreateNew, createNewProject(input), {
             "rpc.aggregate": "orchestration",
@@ -4128,6 +4343,15 @@ export const websocketRpcRouteLayer = Layer.unwrap(
             failEnvironmentInternal("internal_error", error),
           ),
         );
+        const teamAccess = yield* TeamAccess.TeamAccess;
+        // A session whose member was removed cannot connect, even if its
+        // revocation has not landed yet.
+        const member = yield* teamAccess.resolveSessionMember(session).pipe(
+          Effect.catchTags({
+            TeamMemberNotFoundError: () => failEnvironmentAuthInvalid("invalid_credential"),
+            TeamPersistenceError: (error) => failEnvironmentInternal("internal_error", error),
+          }),
+        );
         const clientOrigin = readClientConnectionOrigin(request);
         const clientAnalyticsProps = readClientAnalyticsProps(request);
         yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
@@ -4144,6 +4368,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
           Effect.provide(
             makeWsRpcLayer(
               session,
+              member,
               clientOrigin,
               clientAnalyticsProps,
               previewAutomationBroker,
@@ -4180,9 +4405,18 @@ export const websocketRpcRouteLayer = Layer.unwrap(
             ),
           ),
         );
+        // Revoking a session (for example when an admin removes a member)
+        // closes its live socket instead of leaving it working until reconnect.
+        const sessionRevoked = sessions.streamChanges.pipe(
+          Stream.filter(
+            (change) => change.type === "clientRemoved" && change.sessionId === session.sessionId,
+          ),
+          Stream.runHead,
+          Effect.as(HttpServerResponse.empty({ status: 401 })),
+        );
         return yield* Effect.acquireUseRelease(
           sessions.markConnected(session.sessionId),
-          () => rpcWebSocketHttpEffect,
+          () => rpcWebSocketHttpEffect.pipe(Effect.raceFirst(sessionRevoked)),
           () => sessions.markDisconnected(session.sessionId),
         );
       }).pipe(
