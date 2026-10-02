@@ -125,6 +125,7 @@ import {
 import { useThreadActions } from "../hooks/useThreadActions";
 import { useThreadCollaborationActions } from "../hooks/useThreadCollaborationActions";
 import { readThreadCollaboration } from "../state/threadCollaboration";
+import { ThreadOwnerBadge } from "./collab/ThreadOwnerBadge";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
@@ -1684,6 +1685,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             </span>
             {draftIndicator}
             {title}
+            <ThreadOwnerBadge environmentId={thread.environmentId} thread={thread} />
             {pinIndicator}
             {terminalStatusIcon}
             {isRegeneratingTitle ? (
@@ -1845,6 +1847,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               ) : (
                 <span className="flex-1" />
               )}
+              <ThreadOwnerBadge environmentId={thread.environmentId} thread={thread} />
               {pinIndicator}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping

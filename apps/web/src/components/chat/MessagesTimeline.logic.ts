@@ -31,6 +31,8 @@ import {
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
+import type { OrchestrationThreadComment } from "@t3tools/contracts";
+import { insertThreadCommentRows } from "./threadCommentRows";
 import {
   type MessageId,
   type OrchestrationLatestTurn,
@@ -460,6 +462,13 @@ export type MessagesTimelineRow =
       queuedMessage: QueuedComposerMessage;
       /** Oldest queued message, the one the next boundary sends. */
       isNext: boolean;
+    }
+  | {
+      /** A teammate's comment (Puff Collab). Never sent to the agent. */
+      kind: "thread-comment";
+      id: string;
+      createdAt: string;
+      comment: OrchestrationThreadComment;
     };
 
 export interface StableMessagesTimelineRowsState {
@@ -975,6 +984,8 @@ export function deriveMessagesTimelineRows(input: {
   worktreeSetup?: WorktreeSetupSnapshot | null;
   /** Messages sent during the running turn, rendered after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
+  /** Teammates' comments, interleaved by time. */
+  comments?: ReadonlyArray<OrchestrationThreadComment> | undefined;
 }): MessagesTimelineRow[] {
   const turnDiffSummaryByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
   for (const summary of input.turnDiffSummaries) {
@@ -1473,7 +1484,10 @@ export function deriveMessagesTimelineRows(input: {
       createdAt: input.activeTurnStartedAt,
     });
   }
-  const rows = attachTrailingToolGroupsToAssistant(nextRows);
+  const rows = insertThreadCommentRows(
+    attachTrailingToolGroupsToAssistant(nextRows),
+    input.comments,
+  );
   input.queuedMessages?.forEach((queuedMessage, index) => {
     rows.push({
       kind: "queued-message",
@@ -1637,6 +1651,9 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
 
     case "proposed-plan":
       return a.proposedPlan === (b as typeof a).proposedPlan;
+
+    case "thread-comment":
+      return a.comment === (b as typeof a).comment;
 
     case "queued-message": {
       const bq = b as typeof a;
