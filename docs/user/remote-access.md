@@ -195,10 +195,13 @@ Include the diagnostic message and trace ID when reporting a persistent failure.
 For a connection that still fails after linking, check the date and time on both
 devices. For server version warnings, follow [Updating T3 Code](./updating.md).
 
-## Team members
+## Teams
 
-Several people can share one environment, each signing in as themselves. An
-admin opens **Settings → Connections → Team members**, adds a member, and
+Several people can share one environment, each signing in as themselves.
+
+### Members
+
+An admin opens **Settings → Connections → Team members**, adds a member, and
 sends them the one-time **Sign-in link** (it expires after 24 hours). The
 environment owner is always an admin.
 
@@ -217,20 +220,47 @@ change it later from the thread menu under **Sharing**. Project members then
 see the thread in their sidebar with your name and can follow it live.
 
 Only a thread's owner can instruct the agent, answer its approvals and
-questions, interrupt, rewind, or change the thread. Teammates comment instead;
-comments appear in the timeline for everyone following and are never sent to
-the agent. Admins can also stop, archive, or delete any thread, and only admins
-can delete a project.
+questions, interrupt, rewind, link related threads, or otherwise change the
+thread. Teammates comment instead; comments appear in the timeline for everyone
+following and are never sent to the agent. Admins can also stop, archive, or
+delete any thread, and only admins can delete a project.
 
 ### Related work
 
 While you write the first message of a new thread, T3 Code lists teammates'
 shared threads in the same project that look related, so you can check for
-overlapping work before starting. On a thread you own, the related-threads
-button next to the title shows more suggestions; mark one **Complementary**
-or **Alternative** to link it. Anyone who can see your thread sees its links,
-and a linked thread they cannot open shows as unavailable. Links are only
-shown to people; they are never sent to the agent.
+overlapping work before starting. When you share an existing thread, the
+related-threads button next to its title opens with any matches. Mark one
+**Complementary** or **Alternative** to link it. Anyone who can see your
+thread sees its links, and a linked thread they cannot open shows as
+unavailable. Links are never sent to the agent.
+
+### Team overview
+
+Open **Team overview** from a thread's menu or the command palette to see one
+project as a team: a shared project brief anyone in the project can edit (with
+history), what each member says they are focused on, a card for every shared
+thread and your own, and recent team activity.
+
+### Cooperation analysis
+
+Cooperation analysis summarizes shared threads and tells their owners about
+related findings in each other's work. It is off until you pick an
+**Analysis model** under **Settings → Connections → Cooperation analysis**
+(Claude, OpenCode, or Antigravity; it runs as text only, with no tools).
+
+On a shared thread you own, open **Cooperation** in the thread header, give the
+thread a feature topic, and turn on analysis. Two opted-in threads in the same
+project with the same topic are analyzed together; the result is shown in the
+same panel and on the thread's team overview card. Message text is only
+included if you also allow it, and secrets are redacted first. Links between
+the two threads tell the analyst whether they are complementary or deliberate
+alternatives.
+
+Findings for your thread appear under **For you**. Admitting a note adds it to
+your composer, where you can edit it before sending; approving a proposed
+message sends it to your agent. Nothing reaches an agent without its owner's
+decision.
 
 ## Using the Desktop App as a Remote Only
 
