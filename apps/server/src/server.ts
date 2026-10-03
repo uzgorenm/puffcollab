@@ -135,6 +135,8 @@ import * as ThreadAccess from "./team/ThreadAccess.ts";
 import * as WorkspaceAccess from "./team/WorkspaceAccess.ts";
 import * as TeamOverview from "./team/TeamOverview.ts";
 import * as ProjectInvitations from "./team/ProjectInvitations.ts";
+import * as HubSync from "./hub/HubSync.ts";
+import * as HubTransport from "./hub/HubTransport.ts";
 import * as CooperationAnalyst from "./cooperation/CooperationAnalyst.ts";
 import * as CooperationReactor from "./cooperation/CooperationReactor.ts";
 import * as CooperationService from "./cooperation/CooperationService.ts";
@@ -280,6 +282,7 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ThreadDeletionReactorLive),
   Layer.provideMerge(ThreadSettlementReactor.layer),
   Layer.provideMerge(CooperationReactor.layer),
+  Layer.provideMerge(HubSync.layer.pipe(Layer.provide(HubTransport.layer))),
   Layer.provideMerge(CooperationService.layer),
   Layer.provideMerge(CooperationAnalyst.layer),
   Layer.provideMerge(PullRequestSyncReactor.layer),
