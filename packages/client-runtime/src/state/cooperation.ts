@@ -32,10 +32,6 @@ export function createCooperationEnvironmentAtoms<R, E>(
       label: "environment-data:cooperation:thread",
       tag: WS_METHODS.cooperationSubscribeThread,
     }),
-    projectSummaries: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-      label: "environment-data:cooperation:project-summaries",
-      tag: WS_METHODS.cooperationSubscribeProjectSummaries,
-    }),
     inbox: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:cooperation:inbox",
       tag: WS_METHODS.cooperationSubscribeInbox,

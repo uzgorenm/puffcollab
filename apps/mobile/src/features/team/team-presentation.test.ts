@@ -1,8 +1,9 @@
 import {
+  HubAccountId,
+  HubLocalError,
   type Member,
   MemberId,
   type OrchestrationThreadComment,
-  TeamOverviewError,
   ThreadCommentId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -11,10 +12,9 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   briefChangedSinceDraft,
   insertThreadCommentEntries,
-  isTeamOverviewConflict,
+  isHubConflict,
   teamActivityLine,
   teamMemberName,
-  teamRosterRows,
   threadRowMenuActionsForViewer,
 } from "./team-presentation";
 import { resolveNewThreadVisibility } from "../../state/new-thread-visibility";
@@ -49,10 +49,26 @@ describe("teamMemberName", () => {
 
 describe("teamActivityLine", () => {
   it("leads with the actor only for member-caused activity", () => {
-    expect(teamActivityLine({ kind: "thread-created", actorId: bob }, members, ada)).toBe(
+    const bobAccount = HubAccountId.make("acct-bob");
+    const team = {
+      viewerAccountId: HubAccountId.make("acct-ada"),
+      members: [
+        {
+          accountId: bobAccount,
+          githubLogin: "bob",
+          displayName: "Bob",
+          role: "member" as const,
+          joinedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    };
+    expect(teamActivityLine({ kind: "thread-created", actorId: bobAccount }, team)).toBe(
       "Bob started a thread",
     );
-    expect(teamActivityLine({ kind: "turn-completed", actorId: null }, members, ada)).toBe(
+    expect(teamActivityLine({ kind: "focus-set", actorId: team.viewerAccountId }, team)).toBe(
+      "You set their focus",
+    );
+    expect(teamActivityLine({ kind: "turn-completed", actorId: null }, team)).toBe(
       "Agent finished a turn",
     );
   });
@@ -67,13 +83,13 @@ describe("briefChangedSinceDraft", () => {
   });
 });
 
-describe("isTeamOverviewConflict", () => {
-  it("recognizes only the server's conflict reason", () => {
-    const conflict = new TeamOverviewError({ reason: "conflict", message: "Brief changed" });
-    const forbidden = new TeamOverviewError({ reason: "forbidden", message: "Not a member" });
-    expect(isTeamOverviewConflict(Cause.fail(conflict))).toBe(true);
-    expect(isTeamOverviewConflict(Cause.fail(forbidden))).toBe(false);
-    expect(isTeamOverviewConflict(Cause.die(new Error("boom")))).toBe(false);
+describe("isHubConflict", () => {
+  it("recognizes only the hub's conflict reason", () => {
+    const conflict = new HubLocalError({ reason: "conflict", message: "Brief changed" });
+    const forbidden = new HubLocalError({ reason: "forbidden", message: "Not a member" });
+    expect(isHubConflict(Cause.fail(conflict))).toBe(true);
+    expect(isHubConflict(Cause.fail(forbidden))).toBe(false);
+    expect(isHubConflict(Cause.die(new Error("boom")))).toBe(false);
   });
 });
 
@@ -146,25 +162,5 @@ describe("resolveNewThreadVisibility", () => {
     expect(resolveNewThreadVisibility(null, "shared")).toBe("shared");
     expect(resolveNewThreadVisibility("private", "shared")).toBe("private");
     expect(resolveNewThreadVisibility("shared", undefined)).toBe("shared");
-  });
-});
-
-describe("teamRosterRows", () => {
-  it("lists active members with the viewer first, then admins, then by name", () => {
-    const roster = new Map(
-      [
-        member("zed", "Zed"),
-        { ...member("owner", "Owner"), role: "admin" as const },
-        member("ada", "Ada"),
-        { ...member("gone", "Gone"), removedAt: "2026-02-01T00:00:00.000Z" },
-        member("bob", "Bob"),
-      ].map((m) => [m.memberId, m]),
-    );
-    expect(teamRosterRows(roster, bob)).toEqual([
-      { memberId: bob, name: "Bob", detail: "Member · @bob · you" },
-      { memberId: MemberId.make("owner"), name: "Owner", detail: "Admin · @owner" },
-      { memberId: ada, name: "Ada", detail: "Member · @ada" },
-      { memberId: MemberId.make("zed"), name: "Zed", detail: "Member · @zed" },
-    ]);
   });
 });

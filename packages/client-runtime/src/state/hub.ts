@@ -84,6 +84,8 @@ export function createHubEnvironmentAtoms<R, E>(
     }),
     removeMember: command("remove-member", WS_METHODS.hubRemoveMember),
     leaveProject: command("leave-project", WS_METHODS.hubLeaveProject),
+    updateBrief: command("update-brief", WS_METHODS.hubUpdateBrief),
+    setFocus: command("set-focus", WS_METHODS.hubSetFocus),
   };
 }
 
@@ -98,7 +100,9 @@ type HubCommandTag =
   | typeof WS_METHODS.hubRespondInvitation
   | typeof WS_METHODS.hubCancelInvitation
   | typeof WS_METHODS.hubRemoveMember
-  | typeof WS_METHODS.hubLeaveProject;
+  | typeof WS_METHODS.hubLeaveProject
+  | typeof WS_METHODS.hubUpdateBrief
+  | typeof WS_METHODS.hubSetFocus;
 
 /** Shown as a hint in the hub URL field; never used as a value. */
 export const HUB_URL_PLACEHOLDER = "https://puffcollab-hub.<subdomain>.workers.dev";

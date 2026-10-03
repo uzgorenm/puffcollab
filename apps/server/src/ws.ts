@@ -87,7 +87,6 @@ import {
   type WorktreeSetupSnapshot,
   type Member,
   TeamMembersError,
-  TeamOverviewError,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
@@ -168,7 +167,6 @@ import * as RelatedWork from "./relatedWork/RelatedWork.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
 import * as WorkspaceAccess from "./team/WorkspaceAccess.ts";
-import * as TeamOverview from "./team/TeamOverview.ts";
 import * as ProjectInvitations from "./team/ProjectInvitations.ts";
 import * as HubSync from "./hub/HubSync.ts";
 import * as CooperationService from "./cooperation/CooperationService.ts";
@@ -539,17 +537,6 @@ const toTeamMembersError = (error: TeamAccess.TeamAccessError): TeamMembersError
     message: error.message,
   });
 
-const toTeamOverviewError = (error: TeamOverview.TeamOverviewError): TeamOverviewError =>
-  new TeamOverviewError({
-    reason:
-      error._tag === "TeamOverviewForbiddenError"
-        ? "forbidden"
-        : error._tag === "TeamOverviewBriefConflictError"
-          ? "conflict"
-          : "internal",
-    message: error.message,
-  });
-
 const makeWsRpcLayer = (
   currentSession: EnvironmentAuth.AuthenticatedSession,
   currentMember: Member,
@@ -578,7 +565,6 @@ const makeWsRpcLayer = (
       const teamAccess = yield* TeamAccess.TeamAccess;
       const threadAccess = yield* ThreadAccess.ThreadAccess;
       const workspaceAccess = yield* WorkspaceAccess.WorkspaceAccess;
-      const teamOverview = yield* TeamOverview.TeamOverview;
       const projectInvitations = yield* ProjectInvitations.ProjectInvitations;
       const hubSync = yield* HubSync.HubSync;
       const relatedWork = yield* RelatedWork.RelatedWork;
@@ -3949,50 +3935,18 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.hubRemoveMember, hubSync.removeMember(input), {
             "rpc.aggregate": "hub",
           }),
+        [WS_METHODS.hubUpdateBrief]: (input) =>
+          observeRpcEffect(WS_METHODS.hubUpdateBrief, hubSync.updateBrief(input), {
+            "rpc.aggregate": "hub",
+          }),
+        [WS_METHODS.hubSetFocus]: (input) =>
+          observeRpcEffect(WS_METHODS.hubSetFocus, hubSync.setFocus(input), {
+            "rpc.aggregate": "hub",
+          }),
         [WS_METHODS.hubLeaveProject]: (input) =>
           observeRpcEffect(WS_METHODS.hubLeaveProject, hubSync.leaveProject(input), {
             "rpc.aggregate": "hub",
           }),
-        [WS_METHODS.teamOverviewActivityPage]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.teamOverviewActivityPage,
-            teamOverview
-              .activityPage(currentMemberId, input)
-              .pipe(Effect.mapError(toTeamOverviewError)),
-            { "rpc.aggregate": "team" },
-          ),
-        [WS_METHODS.teamOverviewBriefHistory]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.teamOverviewBriefHistory,
-            teamOverview
-              .briefHistory(currentMemberId, input)
-              .pipe(Effect.mapError(toTeamOverviewError)),
-            { "rpc.aggregate": "team" },
-          ),
-        [WS_METHODS.teamOverviewUpdateBrief]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.teamOverviewUpdateBrief,
-            teamOverview
-              .updateBrief(currentMemberId, input)
-              .pipe(Effect.mapError(toTeamOverviewError)),
-            { "rpc.aggregate": "team" },
-          ),
-        [WS_METHODS.teamOverviewSetFocus]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.teamOverviewSetFocus,
-            teamOverview
-              .setFocus(currentMemberId, input)
-              .pipe(Effect.mapError(toTeamOverviewError)),
-            { "rpc.aggregate": "team" },
-          ),
-        [WS_METHODS.subscribeTeamOverview]: (input) =>
-          observeRpcStream(
-            WS_METHODS.subscribeTeamOverview,
-            teamOverview
-              .stream(currentMemberId, input.projectId)
-              .pipe(Stream.mapError(toTeamOverviewError)),
-            { "rpc.aggregate": "team" },
-          ),
         [WS_METHODS.cooperationSubscribeThread]: (input) =>
           observeRpcStream(
             WS_METHODS.cooperationSubscribeThread,
@@ -4017,12 +3971,6 @@ const makeWsRpcLayer = (
           observeRpcStream(
             WS_METHODS.cooperationSubscribeInbox,
             cooperation.streamInbox(currentMemberId),
-            { "rpc.aggregate": "cooperation" },
-          ),
-        [WS_METHODS.cooperationSubscribeProjectSummaries]: (input) =>
-          observeRpcStream(
-            WS_METHODS.cooperationSubscribeProjectSummaries,
-            cooperation.streamProjectSummaries(currentMemberId, input.projectId),
             { "rpc.aggregate": "cooperation" },
           ),
         [WS_METHODS.cooperationResolveItem]: (input) =>

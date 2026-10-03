@@ -28,8 +28,6 @@ import {
   CooperationAwarenessItem,
   CooperationError,
   CooperationInbox,
-  CooperationProjectSummaries,
-  CooperationProjectSummariesInput,
   CooperationResolveInput,
   CooperationRunResult,
   CooperationSettings,
@@ -59,19 +57,6 @@ import {
   ProjectInvitationsListResult,
   ProjectLeaveInput,
 } from "./projectInvitations.ts";
-import {
-  ProjectBriefHistoryInput,
-  ProjectBriefHistoryResult,
-  ProjectBriefUpdateInput,
-  ProjectBriefVersion,
-  ProjectMemberFocusSetInput,
-  ProjectMemberFocusSetResult,
-  TeamActivityPageInput,
-  TeamActivityPageResult,
-  TeamOverviewError,
-  TeamOverviewStreamItem,
-  TeamOverviewSubscribeInput,
-} from "./teamOverview.ts";
 import {
   RelatedWorkError,
   RelatedWorkSuggestInput,
@@ -352,6 +337,8 @@ import {
   HubUnlinkProjectInput,
 } from "./hubLocal.ts";
 import {
+  HubBriefUpdateInput,
+  HubFocusSetInput,
   HubLeaveProjectInput,
   HubMemberRemoveInput,
   HubTeamInput,
@@ -387,17 +374,11 @@ export const WS_METHODS = {
   projectInvitationsDecline: "projectInvitations.decline",
   projectInvitationsCancel: "projectInvitations.cancel",
 
-  // Team overview (Puff Collab)
-  teamOverviewActivityPage: "teamOverview.activityPage",
-  teamOverviewBriefHistory: "teamOverview.briefHistory",
-  teamOverviewUpdateBrief: "teamOverview.updateBrief",
-  teamOverviewSetFocus: "teamOverview.setFocus",
   // Cooperation analysis (Puff Collab)
   cooperationSubscribeThread: "cooperation.subscribeThread",
   cooperationUpdateSettings: "cooperation.updateSettings",
   cooperationRunAnalysis: "cooperation.runAnalysis",
   cooperationSubscribeInbox: "cooperation.subscribeInbox",
-  cooperationSubscribeProjectSummaries: "cooperation.subscribeProjectSummaries",
   cooperationResolveItem: "cooperation.resolveItem",
   // Related work (Puff Collab)
   relatedWorkSuggest: "relatedWork.suggest",
@@ -560,7 +541,6 @@ export const WS_METHODS = {
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
   subscribeDeviceState: "subscribeDeviceState",
   subscribeServerConfig: "subscribeServerConfig",
-  subscribeTeamOverview: "subscribeTeamOverview",
   subscribeProjectInvitations: "subscribeProjectInvitations",
   hubSubscribeStatus: "hub.subscribeStatus",
   hubConfigure: "hub.configure",
@@ -576,6 +556,8 @@ export const WS_METHODS = {
   hubSubscribeTeam: "hub.subscribeTeam",
   hubRemoveMember: "hub.removeMember",
   hubLeaveProject: "hub.leaveProject",
+  hubUpdateBrief: "hub.updateBrief",
+  hubSetFocus: "hub.setFocus",
   subscribeServerLifecycle: "subscribeServerLifecycle",
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
@@ -1304,46 +1286,21 @@ const WsHubLeaveProjectRpc = Rpc.make(WS_METHODS.hubLeaveProject, {
   success: Schema.Void,
   error: HubLocalRpcError,
 });
+const WsHubUpdateBriefRpc = Rpc.make(WS_METHODS.hubUpdateBrief, {
+  payload: HubBriefUpdateInput,
+  success: Schema.Void,
+  error: HubLocalRpcError,
+});
+const WsHubSetFocusRpc = Rpc.make(WS_METHODS.hubSetFocus, {
+  payload: HubFocusSetInput,
+  success: Schema.Void,
+  error: HubLocalRpcError,
+});
 
 const WsSubscribeProjectInvitationsRpc = Rpc.make(WS_METHODS.subscribeProjectInvitations, {
   payload: Schema.Struct({}),
   success: ProjectInvitationsListResult,
   error: ProjectInvitationsRpcError,
-  stream: true,
-});
-
-const TeamOverviewRpcError = Schema.Union([TeamOverviewError, EnvironmentAuthorizationError]);
-
-const WsTeamOverviewActivityPageRpc = Rpc.make(WS_METHODS.teamOverviewActivityPage, {
-  payload: TeamActivityPageInput,
-  success: TeamActivityPageResult,
-  error: TeamOverviewRpcError,
-});
-
-const WsTeamOverviewBriefHistoryRpc = Rpc.make(WS_METHODS.teamOverviewBriefHistory, {
-  payload: ProjectBriefHistoryInput,
-  success: ProjectBriefHistoryResult,
-  error: TeamOverviewRpcError,
-});
-
-const WsTeamOverviewUpdateBriefRpc = Rpc.make(WS_METHODS.teamOverviewUpdateBrief, {
-  payload: ProjectBriefUpdateInput,
-  success: ProjectBriefVersion,
-  error: TeamOverviewRpcError,
-});
-
-// Always sets the caller's own focus; the server takes the member from the session.
-const WsTeamOverviewSetFocusRpc = Rpc.make(WS_METHODS.teamOverviewSetFocus, {
-  payload: ProjectMemberFocusSetInput,
-  success: ProjectMemberFocusSetResult,
-  error: TeamOverviewRpcError,
-});
-
-// Brief, member focus, and recent activity for one project: a snapshot, then deltas.
-const WsSubscribeTeamOverviewRpc = Rpc.make(WS_METHODS.subscribeTeamOverview, {
-  payload: TeamOverviewSubscribeInput,
-  success: TeamOverviewStreamItem,
-  error: TeamOverviewRpcError,
   stream: true,
 });
 
@@ -1376,17 +1333,6 @@ const WsCooperationSubscribeInboxRpc = Rpc.make(WS_METHODS.cooperationSubscribeI
   error: CooperationRpcError,
   stream: true,
 });
-
-// Summaries for a project's work cards; one stream per open team overview.
-const WsCooperationSubscribeProjectSummariesRpc = Rpc.make(
-  WS_METHODS.cooperationSubscribeProjectSummaries,
-  {
-    payload: CooperationProjectSummariesInput,
-    success: CooperationProjectSummaries,
-    error: CooperationRpcError,
-    stream: true,
-  },
-);
 
 const WsCooperationResolveItemRpc = Rpc.make(WS_METHODS.cooperationResolveItem, {
   payload: CooperationResolveInput,
@@ -1941,16 +1887,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsHubSubscribeTeamRpc,
   WsHubRemoveMemberRpc,
   WsHubLeaveProjectRpc,
-  WsTeamOverviewActivityPageRpc,
-  WsTeamOverviewBriefHistoryRpc,
-  WsTeamOverviewUpdateBriefRpc,
-  WsTeamOverviewSetFocusRpc,
-  WsSubscribeTeamOverviewRpc,
+  WsHubUpdateBriefRpc,
+  WsHubSetFocusRpc,
   WsCooperationSubscribeThreadRpc,
   WsCooperationUpdateSettingsRpc,
   WsCooperationRunAnalysisRpc,
   WsCooperationSubscribeInboxRpc,
-  WsCooperationSubscribeProjectSummariesRpc,
   WsCooperationResolveItemRpc,
   WsRelatedWorkSuggestRpc,
   WsProjectsWriteFileRpc,

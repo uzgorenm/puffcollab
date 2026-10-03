@@ -10,6 +10,7 @@ import {
   type HubClientMessage,
   HubEnvironmentLinkId,
   type HubLinkTokenResponse,
+  type HubLocalTeam,
   type HubLocalStatus,
   HubProjectId,
   type HubProjectState,
@@ -105,6 +106,7 @@ const makeFakeHub = (options: { readonly range?: HubProtocolRange } = {}) =>
     const tokenResponses: Array<HubLinkTokenResponse> = [];
     const pushedFrames: Array<string> = [];
     let rejectNextPublish: { readonly expectedSeq: number } | null = null;
+    let briefVersion: number | null = null;
     let members = [
       { accountId: ME.accountId, role: "admin" as const, joinedAt: NOW, invitedBy: null },
       { accountId: BOB.accountId, role: "member" as const, joinedAt: NOW, invitedBy: ME.accountId },
@@ -279,6 +281,45 @@ const makeFakeHub = (options: { readonly range?: HubProtocolRange } = {}) =>
                 text: message.text,
                 createdAt: NOW,
               },
+            });
+          case "brief.update": {
+            if (message.expectedVersion !== briefVersion) {
+              return yield* push({
+                type: "reject",
+                requestId: message.requestId,
+                reason: "conflict",
+                message: "The brief changed.",
+                currentVersion: briefVersion,
+              });
+            }
+            briefVersion = (briefVersion ?? 0) + 1;
+            yield* push({ type: "ack", requestId: message.requestId });
+            return yield* push({
+              type: "team.brief",
+              brief: {
+                projectId: message.projectId,
+                version: briefVersion,
+                text: message.text,
+                authorId: ME.accountId,
+                createdAt: NOW,
+              },
+            });
+          }
+          case "focus.set":
+            yield* push({ type: "ack", requestId: message.requestId });
+            return yield* push({
+              type: "team.focus",
+              projectId: message.projectId,
+              accountId: ME.accountId,
+              focus:
+                message.focus === null
+                  ? null
+                  : {
+                      projectId: message.projectId,
+                      accountId: ME.accountId,
+                      focus: message.focus,
+                      updatedAt: NOW,
+                    },
             });
           case "member.remove":
             members = members.filter((member) => member.accountId !== message.accountId);
@@ -1086,6 +1127,110 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
             hub.removeMember({ projectId: PROJECT, accountId: BOB.accountId }),
           );
           expect(notLinked.reason).toBe("invalid");
+        }),
+      );
+    }).pipe(Effect.provide(baseLayer)),
+  );
+
+  it.effect("serves Team overview from the hub with local thread ids", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakeHub();
+      seedTeammateThread(fake);
+      yield* withHub(fake, (hub) =>
+        Effect.gen(function* () {
+          yield* linkEnvironment(hub, fake);
+          yield* setupProjects(hub);
+          const own = ThreadId.make("t-own");
+          const ownHubId = HubThreadId.make(`${LINK_ID}:${own}`);
+          yield* fake.push({
+            type: "team.thread",
+            summary: {
+              threadId: ownHubId,
+              projectId: HUB_PROJECT,
+              ownerId: ME.accountId,
+              generation: 1,
+              lastSeq: 2,
+              title: "My thread",
+              branch: "feature/x",
+              status: "working",
+              updatedAt: NOW,
+            },
+          });
+          yield* fake.push({
+            type: "team.analysis",
+            projectId: HUB_PROJECT,
+            summaries: [{ threadId: REMOTE_HUB_THREAD, summary: "Bob refactors.", updatedAt: NOW }],
+          });
+          yield* fake.push({
+            type: "team.activity",
+            projectId: HUB_PROJECT,
+            items: [
+              {
+                id: "act-1",
+                projectId: HUB_PROJECT,
+                kind: "thread-created",
+                threadId: REMOTE_HUB_THREAD,
+                actorId: BOB.accountId,
+                detail: "Bob's thread",
+                occurredAt: NOW,
+                sequence: 1,
+              },
+            ],
+          });
+          const teamWhere = (predicate: (team: HubLocalTeam) => boolean) =>
+            hub.subscribeProjectTeam(PROJECT).pipe(
+              Stream.filter((result) => result.team !== null && predicate(result.team)),
+              Stream.runHead,
+              Effect.map((result) => Option.getOrThrow(result).team!),
+            );
+          const team = yield* teamWhere(
+            (next) =>
+              next.workCards.length === 2 &&
+              next.activity.length === 1 &&
+              next.workCards.some((card) => card.analysis !== null),
+          );
+          expect(team.workCards).toEqual([
+            {
+              threadId: own,
+              hubThreadId: ownHubId,
+              ownerId: ME.accountId,
+              title: "My thread",
+              status: "working",
+              lastActivityAt: NOW,
+              branch: "feature/x",
+              analysis: null,
+            },
+            expect.objectContaining({
+              threadId: mirrorThreadIdOf(REMOTE_HUB_THREAD),
+              ownerId: BOB.accountId,
+              analysis: { summary: "Bob refactors.", updatedAt: NOW },
+            }),
+          ]);
+          expect(team.activity[0]).toMatchObject({
+            threadId: mirrorThreadIdOf(REMOTE_HUB_THREAD),
+            actorId: BOB.accountId,
+          });
+
+          yield* hub.updateBrief({
+            projectId: PROJECT,
+            text: "Ship refunds",
+            expectedVersion: null,
+          });
+          const withBrief = yield* teamWhere((next) => next.brief !== null);
+          expect(withBrief.brief).toMatchObject({ version: 1, text: "Ship refunds" });
+          const conflict = yield* Effect.flip(
+            hub.updateBrief({ projectId: PROJECT, text: "Overwrite", expectedVersion: null }),
+          );
+          expect(conflict.reason).toBe("conflict");
+
+          yield* hub.setFocus({ projectId: PROJECT, focus: "Refund API" });
+          const focused = yield* teamWhere((next) => next.focuses.length === 1);
+          expect(focused.focuses[0]).toMatchObject({
+            accountId: ME.accountId,
+            focus: "Refund API",
+          });
+          yield* hub.setFocus({ projectId: PROJECT, focus: null });
+          yield* teamWhere((next) => next.focuses.length === 0);
         }),
       );
     }).pipe(Effect.provide(baseLayer)),

@@ -191,7 +191,6 @@ import * as RelatedWork from "./relatedWork/RelatedWork.ts";
 import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
 import * as WorkspaceAccess from "./team/WorkspaceAccess.ts";
-import * as TeamOverview from "./team/TeamOverview.ts";
 import * as ProjectInvitations from "./team/ProjectInvitations.ts";
 import * as HubSync from "./hub/HubSync.ts";
 import * as CooperationService from "./cooperation/CooperationService.ts";
@@ -1257,7 +1256,6 @@ const buildAppUnderTest = (options?: {
       }),
       Layer.provideMerge(
         Layer.mergeAll(
-          Layer.mock(TeamOverview.TeamOverview)({}),
           Layer.mock(HubSync.HubSync)({}),
           Layer.mergeAll(RelatedWork.layer, WorkspaceAccess.layer, ProjectInvitations.layer).pipe(
             Layer.provideMerge(

@@ -15,7 +15,6 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
@@ -292,42 +291,6 @@ it.layer(NodeServices.layer)("CooperationService", (it) => {
       yield* cooperation.analyzeThread(THREAD_A, "manual");
 
       expect(harness.prompts[0]).toContain('"relationship":"alternative"');
-    }).pipe(Effect.provide(harness.layer));
-  });
-
-  it.effect("streams a project's shared-thread summaries to its members for work cards", () => {
-    const harness = makeHarness();
-    harness.analyst.respond = () => Effect.succeed(goodOutput);
-    return Effect.gen(function* () {
-      const cooperation = yield* CooperationService;
-      const sql = yield* SqlClient.SqlClient;
-      for (const id of [THREAD_A, THREAD_B]) {
-        yield* sql`
-          INSERT INTO projection_threads (
-            thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
-            branch, worktree_path, latest_turn_id, created_at, updated_at, deleted_at, visibility
-          )
-          VALUES (
-            ${id}, ${PROJECT}, 'T', '{}', 'full-access', 'default',
-            NULL, NULL, NULL, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z', NULL, 'shared'
-          )
-        `;
-      }
-      yield* appendMessage(THREAD_A, "a");
-      yield* appendMessage(THREAD_B, "b");
-      yield* consent(OWNER_MEMBER_ID, THREAD_A);
-      yield* consent(ADA, THREAD_B);
-      yield* cooperation.analyzeThread(THREAD_A, "manual");
-      // Thread A was made private again after its summary was written.
-      yield* sql`UPDATE projection_threads SET visibility = 'private' WHERE thread_id = ${THREAD_A}`;
-
-      const first = (memberId: MemberId) =>
-        cooperation.streamProjectSummaries(memberId, PROJECT).pipe(Stream.runHead);
-      const forAda = yield* first(ADA);
-      expect(Option.getOrThrow(forAda).summaries).toEqual([
-        { threadId: THREAD_B, summary: "Ada is adding refunds.", updatedAt: expect.any(String) },
-      ]);
-      expect(Option.getOrThrow(yield* first(OUTSIDER)).summaries).toEqual([]);
     }).pipe(Effect.provide(harness.layer));
   });
 

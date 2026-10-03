@@ -1,16 +1,14 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
-  appendOlderTeamActivity,
-  deriveTeamWorkCards,
+  hubTeamMemberName,
   TEAM_WORK_CARD_STATUS_LABELS,
-  type TeamOverviewState,
 } from "@t3tools/client-runtime/state/team-overview";
 import {
   EnvironmentId,
+  type HubLocalTeam,
   PROJECT_BRIEF_MAX_LENGTH,
   PROJECT_MEMBER_FOCUS_MAX_LENGTH,
   ProjectId,
-  type TeamActivityPageResult,
   type ThreadId,
 } from "@t3tools/contracts";
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
@@ -21,21 +19,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text, AppTextInput } from "../../components/AppText";
 import { ScreenScrollView } from "../../components/ScreenScrollView";
 import { relativeTime } from "../../lib/time";
-import { useCooperationProjectSummaries } from "../../state/cooperation";
-import { useProject, useThreadShells } from "../../state/entities";
-import { type EnvironmentMembers, useEnvironmentMembers } from "../../state/members";
-import { useEnvironmentQuery } from "../../state/query";
-import { teamOverviewEnvironment, useTeamOverview } from "../../state/team-overview";
+import { useProject } from "../../state/entities";
+import { hubEnvironment, useHubProjectLink, useHubStatus, useHubTeam } from "../../state/hub";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { SettingsSection } from "../settings/components/SettingsSection";
-import {
-  briefChangedSinceDraft,
-  isTeamOverviewConflict,
-  teamActivityLine,
-  teamMemberName,
-  teamRosterRows,
-} from "./team-presentation";
+import { HubProjectLinkSection } from "./HubTeamSections";
+import { briefChangedSinceDraft, isHubConflict, teamActivityLine } from "./team-presentation";
 import { TeamPillButton } from "./TeamPillButton";
 import { TeamCardBody, TeamMutedText, TeamRow } from "./TeamRows";
 
@@ -45,10 +35,10 @@ type TeamOverviewRouteProps = StaticScreenProps<{
 }>;
 
 /**
- * The team view of one project (Puff Collab): the shared brief, everyone's
- * focus, a work card per visible thread with its analysis summary, recent
- * activity, and the team roster. Adding environment members stays on web and desktop;
- * project invitations open from here.
+ * The team view of a hub-linked project (Puff Collab): the shared brief,
+ * everyone's focus, a work card per shared thread with its analysis summary,
+ * and recent activity, all from the team hub. A project that is not on the
+ * hub shows how to link it instead.
  */
 export function TeamOverviewRouteScreen(props: TeamOverviewRouteProps) {
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
@@ -58,33 +48,9 @@ export function TeamOverviewRouteScreen(props: TeamOverviewRouteProps) {
   const project = useProject(
     useMemo(() => scopeProjectRef(environmentId, projectId), [environmentId, projectId]),
   );
-  const shells = useThreadShells();
-  const roster = useEnvironmentMembers(environmentId);
-  const { overview, error } = useTeamOverview({ environmentId, projectId });
-  const analysisByThreadId = useCooperationProjectSummaries(environmentId, projectId);
-  const projectThreads = useMemo(
-    () =>
-      shells.filter(
-        (shell) => shell.environmentId === environmentId && shell.projectId === projectId,
-      ),
-    [environmentId, projectId, shells],
-  );
-  const cards = useMemo(
-    () =>
-      roster.currentMemberId === null
-        ? []
-        : deriveTeamWorkCards({
-            threads: projectThreads,
-            projectId,
-            memberId: roster.currentMemberId,
-            analysisByThreadId,
-          }),
-    [analysisByThreadId, projectId, projectThreads, roster.currentMemberId],
-  );
-  const threadTitles = useMemo(
-    () => new Map<string, string>(projectThreads.map((thread) => [thread.id, thread.title])),
-    [projectThreads],
-  );
+  const status = useHubStatus(environmentId);
+  const link = useHubProjectLink(environmentId, projectId);
+  const team = useHubTeam(environmentId, projectId);
   const openThread = useCallback(
     (threadId: ThreadId) =>
       navigation.dispatch(
@@ -102,31 +68,41 @@ export function TeamOverviewRouteScreen(props: TeamOverviewRouteProps) {
         contentContainerClassName="gap-6 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
-        {overview === null ? (
-          error ? (
-            <Text className="text-sm text-danger-foreground">{error}</Text>
-          ) : (
+        {link === null ? (
+          <>
+            <TeamMutedText>
+              Team overview shows the brief, focus, shared work and activity of a project you share
+              with teammates on the team hub.
+            </TeamMutedText>
+            <HubProjectLinkSection environmentId={environmentId} projectId={projectId} />
+          </>
+        ) : team === null ? (
+          status?.state === "online" ? (
             <ActivityIndicator />
+          ) : (
+            <TeamMutedText>
+              Team overview appears once this computer reaches the team hub.
+            </TeamMutedText>
           )
         ) : (
           <>
-            <BriefSection environmentId={environmentId} overview={overview} roster={roster} />
-            <FocusSection environmentId={environmentId} overview={overview} roster={roster} />
+            <BriefSection environmentId={environmentId} team={team} />
+            <FocusSection environmentId={environmentId} team={team} />
             <SettingsSection title="Work">
-              {cards.length === 0 ? (
+              {team.workCards.length === 0 ? (
                 <TeamCardBody>
                   <TeamMutedText>
-                    No shared threads yet. Threads you own and threads teammates share show up here.
+                    No shared threads yet. Shared threads from you and your teammates show up here.
                   </TeamMutedText>
                 </TeamCardBody>
               ) : (
-                cards.map((card, index) => (
+                team.workCards.map((card, index) => (
                   <TeamRow
-                    key={card.threadId}
+                    key={card.hubThreadId}
                     divided={index > 0}
                     title={card.title}
                     detail={[
-                      `${TEAM_WORK_CARD_STATUS_LABELS[card.status]} · ${teamMemberName(roster.members, card.ownerId, roster.currentMemberId)} · ${relativeTime(card.lastActivityAt)}${card.branch ? ` · ${card.branch}` : ""}`,
+                      `${TEAM_WORK_CARD_STATUS_LABELS[card.status]} · ${hubTeamMemberName(team, card.ownerId)} · ${relativeTime(card.lastActivityAt)}${card.branch ? ` · ${card.branch}` : ""}`,
                       card.analysis?.summary ?? null,
                     ]
                       .filter(Boolean)
@@ -136,28 +112,12 @@ export function TeamOverviewRouteScreen(props: TeamOverviewRouteProps) {
                 ))
               )}
             </SettingsSection>
-            <ActivitySection
-              environmentId={environmentId}
-              overview={overview}
-              roster={roster}
-              threadTitles={threadTitles}
-              onOpenThread={openThread}
-            />
-            <SettingsSection title="Team members">
-              {teamRosterRows(roster.members, roster.currentMemberId).map((row, index) => (
-                <TeamRow
-                  key={row.memberId}
-                  divided={index > 0}
-                  icon="person.crop.circle"
-                  title={row.name}
-                  detail={row.detail}
-                />
-              ))}
+            <ActivitySection team={team} onOpenThread={openThread} />
+            <SettingsSection title="People">
               <TeamRow
-                divided
                 icon="person.badge.plus"
-                title="Invite people"
-                detail="Who is in this project, invitations, and leaving it."
+                title={`${team.members.length} ${team.members.length === 1 ? "member" : "members"}`}
+                detail="Members, invitations by GitHub login, and leaving the project."
                 onPress={() =>
                   navigation.navigate("ProjectPeople", {
                     environmentId: String(environmentId),
@@ -175,18 +135,16 @@ export function TeamOverviewRouteScreen(props: TeamOverviewRouteProps) {
 
 function BriefSection(props: {
   readonly environmentId: EnvironmentId;
-  readonly overview: TeamOverviewState;
-  readonly roster: EnvironmentMembers;
+  readonly team: HubLocalTeam;
 }) {
-  const { overview, roster } = props;
-  const brief = overview.brief;
-  const updateBrief = useAtomCommand(teamOverviewEnvironment.updateBrief, {
+  const { team } = props;
+  const brief = team.brief;
+  const updateBrief = useAtomCommand(hubEnvironment.updateBrief, {
     label: "Save project brief",
     reportFailure: false,
   });
   const [draft, setDraft] = useState<{ text: string; baseVersion: number | null } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   const staleDraft = draft !== null && briefChangedSinceDraft(draft.baseVersion, brief);
 
   const save = async () => {
@@ -195,7 +153,7 @@ function BriefSection(props: {
     const result = await updateBrief({
       environmentId: props.environmentId,
       input: {
-        projectId: overview.projectId,
+        projectId: team.projectId,
         text: draft.text.trim(),
         expectedVersion: draft.baseVersion,
       },
@@ -206,8 +164,8 @@ function BriefSection(props: {
       return;
     }
     Alert.alert(
-      isTeamOverviewConflict(result.cause) ? "Someone saved the brief first" : "Could not save",
-      isTeamOverviewConflict(result.cause)
+      isHubConflict(result.cause) ? "Someone saved the brief first" : "Could not save",
+      isHubConflict(result.cause)
         ? "Your draft is kept. Review their version, then edit again to save on top of it."
         : "Your draft is kept. Try again.",
     );
@@ -216,51 +174,35 @@ function BriefSection(props: {
   return (
     <SettingsSection title="Project brief">
       {draft === null ? (
-        <>
-          <TeamCardBody>
-            {brief && brief.text.length > 0 ? (
-              <Text className="text-sm text-foreground" selectable>
-                {brief.text}
-              </Text>
-            ) : (
-              <TeamMutedText>
-                No brief yet. Describe what the team is building and what matters right now.
-              </TeamMutedText>
-            )}
-            {brief ? (
-              <Text className="text-xs text-foreground-muted">
-                {`Version ${brief.version} by ${teamMemberName(roster.members, brief.authorId, roster.currentMemberId)}, ${relativeTime(brief.createdAt)}`}
-              </Text>
-            ) : null}
-            <View className="flex-row justify-end gap-2 pt-1">
-              {brief && brief.version > 1 ? (
-                <TeamPillButton
-                  label={showHistory ? "Hide history" : "History"}
-                  onPress={() => setShowHistory((open) => !open)}
-                />
-              ) : null}
-              <TeamPillButton
-                label="Edit"
-                onPress={() =>
-                  setDraft({ text: brief?.text ?? "", baseVersion: brief?.version ?? null })
-                }
-              />
-            </View>
-          </TeamCardBody>
-          {showHistory && brief ? (
-            <BriefHistory
-              environmentId={props.environmentId}
-              projectId={overview.projectId}
-              beforeVersion={brief.version}
-              roster={roster}
-            />
+        <TeamCardBody>
+          {brief && brief.text.length > 0 ? (
+            <Text className="text-sm text-foreground" selectable>
+              {brief.text}
+            </Text>
+          ) : (
+            <TeamMutedText>
+              No brief yet. Describe what the team is building and what matters right now.
+            </TeamMutedText>
+          )}
+          {brief ? (
+            <Text className="text-xs text-foreground-muted">
+              {`Version ${brief.version} by ${hubTeamMemberName(team, brief.authorId)}, ${relativeTime(brief.createdAt)}`}
+            </Text>
           ) : null}
-        </>
+          <View className="flex-row justify-end gap-2 pt-1">
+            <TeamPillButton
+              label="Edit"
+              onPress={() =>
+                setDraft({ text: brief?.text ?? "", baseVersion: brief?.version ?? null })
+              }
+            />
+          </View>
+        </TeamCardBody>
       ) : (
         <TeamCardBody>
           {staleDraft ? (
             <Text className="text-xs text-warning-foreground">
-              {`Conflict: ${teamMemberName(roster.members, brief?.authorId ?? null, roster.currentMemberId)} saved a newer version while you were editing. Saving now will be refused; cancel to see it.`}
+              {`Conflict: ${hubTeamMemberName(team, brief?.authorId ?? null)} saved a newer version while you were editing. Saving now will be refused; cancel to see it.`}
             </Text>
           ) : null}
           <AppTextInput
@@ -287,55 +229,23 @@ function BriefSection(props: {
   );
 }
 
-function BriefHistory(props: {
-  readonly environmentId: EnvironmentId;
-  readonly projectId: ProjectId;
-  readonly beforeVersion: number;
-  readonly roster: EnvironmentMembers;
-}) {
-  const history = useEnvironmentQuery(
-    teamOverviewEnvironment.briefHistory({
-      environmentId: props.environmentId,
-      input: { projectId: props.projectId, beforeVersion: props.beforeVersion, limit: 20 },
-    }),
-  ).data;
-  if (history === null) {
-    return (
-      <TeamCardBody divided>
-        <ActivityIndicator />
-      </TeamCardBody>
-    );
-  }
-  return history.versions.map((version) => (
-    <TeamCardBody key={version.version} divided>
-      <Text className="text-xs text-foreground-muted">
-        {`Version ${version.version} by ${teamMemberName(props.roster.members, version.authorId, props.roster.currentMemberId)}, ${relativeTime(version.createdAt)}`}
-      </Text>
-      <Text className="text-sm text-foreground" selectable>
-        {version.text || "(empty)"}
-      </Text>
-    </TeamCardBody>
-  ));
-}
-
 function FocusSection(props: {
   readonly environmentId: EnvironmentId;
-  readonly overview: TeamOverviewState;
-  readonly roster: EnvironmentMembers;
+  readonly team: HubLocalTeam;
 }) {
-  const { overview, roster } = props;
-  const setFocus = useAtomCommand(teamOverviewEnvironment.setFocus, "Update your focus");
-  const own = overview.focuses.find((focus) => focus.memberId === roster.currentMemberId) ?? null;
+  const { team } = props;
+  const setFocus = useAtomCommand(hubEnvironment.setFocus, "Update your focus");
+  const own = team.focuses.find((focus) => focus.accountId === team.viewerAccountId) ?? null;
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const value = draft ?? own?.focus ?? "";
-  const others = overview.focuses.filter((focus) => focus.memberId !== roster.currentMemberId);
+  const others = team.focuses.filter((focus) => focus.accountId !== team.viewerAccountId);
 
   const submit = async (focus: string | null) => {
     setSaving(true);
     const result = await setFocus({
       environmentId: props.environmentId,
-      input: { projectId: overview.projectId, focus },
+      input: { projectId: team.projectId, focus },
     });
     setSaving(false);
     if (result._tag === "Success") setDraft(null);
@@ -370,10 +280,10 @@ function FocusSection(props: {
       </TeamCardBody>
       {others.map((focus) => (
         <TeamRow
-          key={focus.memberId}
+          key={focus.accountId}
           divided
           title={focus.focus}
-          detail={`${teamMemberName(roster.members, focus.memberId, roster.currentMemberId)} · ${relativeTime(focus.updatedAt)}`}
+          detail={`${hubTeamMemberName(team, focus.accountId)} · ${relativeTime(focus.updatedAt)}`}
         />
       ))}
     </SettingsSection>
@@ -381,55 +291,29 @@ function FocusSection(props: {
 }
 
 function ActivitySection(props: {
-  readonly environmentId: EnvironmentId;
-  readonly overview: TeamOverviewState;
-  readonly roster: EnvironmentMembers;
-  readonly threadTitles: ReadonlyMap<string, string>;
+  readonly team: HubLocalTeam;
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
-  const { roster } = props;
-  const loadPage = useAtomCommand(teamOverviewEnvironment.activityPage, "Load older activity");
-  const [older, setOlder] = useState<TeamActivityPageResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const view = older === null ? props.overview : appendOlderTeamActivity(props.overview, older);
-  const nextBeforeSequence = view.activityNextBeforeSequence;
-
-  const loadOlder = async () => {
-    if (nextBeforeSequence === null) return;
-    setLoading(true);
-    const result = await loadPage({
-      environmentId: props.environmentId,
-      input: {
-        projectId: props.overview.projectId,
-        beforeSequence: nextBeforeSequence,
-        limit: 30,
-      },
-    });
-    setLoading(false);
-    if (result._tag === "Success") {
-      const page = result.value;
-      setOlder((previous) => ({
-        items: [...(previous?.items ?? []), ...page.items],
-        nextBeforeSequence: page.nextBeforeSequence,
-      }));
-    }
-  };
-
+  const { team } = props;
+  const threadTitles = useMemo(
+    () => new Map<string, string>(team.workCards.map((card) => [card.threadId, card.title])),
+    [team.workCards],
+  );
   return (
     <SettingsSection title="Activity">
-      {view.activity.length === 0 ? (
+      {team.activity.length === 0 ? (
         <TeamCardBody>
           <TeamMutedText>No recent activity.</TeamMutedText>
         </TeamCardBody>
       ) : (
-        view.activity.map((item, index) => {
-          const threadTitle = item.threadId ? props.threadTitles.get(item.threadId) : undefined;
+        team.activity.map((item, index) => {
+          const threadTitle = item.threadId ? threadTitles.get(item.threadId) : undefined;
           const threadId = item.threadId;
           return (
             <TeamRow
               key={item.id}
               divided={index > 0}
-              title={`${teamActivityLine(item, roster.members, roster.currentMemberId)}${threadTitle ? ` in ${threadTitle}` : ""}`}
+              title={`${teamActivityLine(item, team)}${threadTitle ? ` in ${threadTitle}` : ""}`}
               detail={[
                 relativeTime(item.occurredAt),
                 item.detail && item.kind !== "thread-created" ? item.detail : null,
@@ -441,13 +325,6 @@ function ActivitySection(props: {
           );
         })
       )}
-      {nextBeforeSequence !== null ? (
-        <TeamCardBody divided>
-          <View className="flex-row">
-            <TeamPillButton label="Load older" loading={loading} onPress={() => void loadOlder()} />
-          </View>
-        </TeamCardBody>
-      ) : null}
     </SettingsSection>
   );
 }

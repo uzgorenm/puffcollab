@@ -1,15 +1,16 @@
 import type { RelatedThreadStatus } from "@t3tools/client-runtime/state/related-work";
 import {
+  hubTeamMemberName,
   teamActivityHasActor,
   teamActivityPhrase,
 } from "@t3tools/client-runtime/state/team-overview";
 import type {
+  HubLocalActivityItem,
+  HubLocalTeam,
   Member,
   MemberId,
   OrchestrationThreadComment,
-  ProjectBriefVersion,
   RelatedThreadRelationship,
-  TeamActivityItem,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 
@@ -34,44 +35,13 @@ export function teamMemberName(
 
 /** "Ada started a thread", or "Agent finished a turn" for provider activity. */
 export function teamActivityLine(
-  item: Pick<TeamActivityItem, "kind" | "actorId">,
-  members: Members,
-  currentMemberId: MemberId | null,
+  item: Pick<HubLocalActivityItem, "kind" | "actorId">,
+  team: Pick<HubLocalTeam, "viewerAccountId" | "members">,
 ): string {
   const phrase = teamActivityPhrase(item.kind);
   return teamActivityHasActor(item.kind)
-    ? `${teamMemberName(members, item.actorId, currentMemberId)} ${phrase}`
+    ? `${hubTeamMemberName(team, item.actorId)} ${phrase}`
     : phrase;
-}
-
-/**
- * The read-only roster: active members only, the viewer first, then admins,
- * then by name. Removed members stay in the index for author names but are
- * not part of the team any more.
- */
-export function teamRosterRows(
-  members: Members,
-  currentMemberId: MemberId | null,
-): ReadonlyArray<{ readonly memberId: MemberId; readonly name: string; readonly detail: string }> {
-  const rank = (member: Member) =>
-    member.memberId === currentMemberId ? 0 : member.role === "admin" ? 1 : 2;
-  return [...members.values()]
-    .filter((member) => member.removedAt === null)
-    .sort(
-      (left, right) =>
-        rank(left) - rank(right) || left.displayName.localeCompare(right.displayName),
-    )
-    .map((member) => ({
-      memberId: member.memberId,
-      name: member.displayName,
-      detail: [
-        member.role === "admin" ? "Admin" : "Member",
-        `@${member.username}`,
-        member.memberId === currentMemberId ? "you" : null,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-    }));
 }
 
 export const RELATED_THREAD_RELATIONSHIP_LABELS: Readonly<
@@ -101,19 +71,19 @@ export function followingThreadNotice(ownerName: string): string {
  */
 export function briefChangedSinceDraft(
   baseVersion: number | null,
-  brief: Pick<ProjectBriefVersion, "version"> | null,
+  brief: { readonly version: number } | null,
 ): boolean {
   return (brief?.version ?? null) !== baseVersion;
 }
 
-/** True when a failed team-overview command was the server's optimistic-concurrency conflict. */
-export function isTeamOverviewConflict(cause: Cause.Cause<unknown>): boolean {
+/** True when a failed hub command was the hub's optimistic-concurrency conflict. */
+export function isHubConflict(cause: Cause.Cause<unknown>): boolean {
   const error = Cause.squash(cause);
   return (
     typeof error === "object" &&
     error !== null &&
     "_tag" in error &&
-    error._tag === "TeamOverviewError" &&
+    error._tag === "HubLocalError" &&
     "reason" in error &&
     error.reason === "conflict"
   );

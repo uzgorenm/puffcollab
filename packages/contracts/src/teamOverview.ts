@@ -9,20 +9,11 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
-import {
-  isThreadShared,
-  ProjectBriefText,
-  ProjectMemberFocusText,
-  threadOwnerOf,
-  type ThreadVisibility,
-} from "./orchestration.ts";
 
 /**
- * Puff Collab team overview: one view per project of what everyone is working
- * on. The brief and member focus are event-sourced on the project aggregate
- * (`project.brief-updated`, `project.member-focus-set`); the activity feed is a
- * server projection of meaningful thread and project events; work cards are
- * derived on the client from the thread shells it already streams.
+ * Puff Collab team overview shapes. The team hub owns the brief, focus,
+ * activity and work cards (hub.ts re-keys these on hub ids); a client reads
+ * them through its local server as `HubLocalTeam` (hubTeam.ts).
  */
 
 /** One saved version of a project's brief. Every edit appends a version. */
@@ -76,117 +67,7 @@ export const TeamActivityItem = Schema.Struct({
 });
 export type TeamActivityItem = typeof TeamActivityItem.Type;
 
-const TEAM_ACTIVITY_PAGE_MAX = 100;
 export const TEAM_ACTIVITY_SNAPSHOT_LIMIT = 30;
-
-export const TeamOverviewSnapshot = Schema.Struct({
-  projectId: ProjectId,
-  brief: Schema.NullOr(ProjectBriefVersion),
-  focuses: Schema.Array(ProjectMemberFocus),
-  /** The most recent activity, newest first, at most TEAM_ACTIVITY_SNAPSHOT_LIMIT. */
-  activity: Schema.Array(TeamActivityItem),
-  /** Pass as `beforeSequence` to page older activity. Null when nothing older remains. */
-  activityNextBeforeSequence: Schema.NullOr(NonNegativeInt),
-});
-export type TeamOverviewSnapshot = typeof TeamOverviewSnapshot.Type;
-
-/**
- * The team overview stream: one snapshot, then small deltas. Activity deltas
- * carry only items newer than anything already sent, newest first.
- */
-export const TeamOverviewStreamItem = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("snapshot"), snapshot: TeamOverviewSnapshot }),
-  Schema.Struct({ kind: Schema.Literal("brief"), brief: ProjectBriefVersion }),
-  Schema.Struct({
-    kind: Schema.Literal("focus"),
-    memberId: MemberId,
-    /** Null when the member cleared their focus. */
-    focus: Schema.NullOr(ProjectMemberFocus),
-  }),
-  Schema.Struct({ kind: Schema.Literal("activity"), items: Schema.Array(TeamActivityItem) }),
-]);
-export type TeamOverviewStreamItem = typeof TeamOverviewStreamItem.Type;
-
-export const TeamOverviewSubscribeInput = Schema.Struct({ projectId: ProjectId });
-export type TeamOverviewSubscribeInput = typeof TeamOverviewSubscribeInput.Type;
-
-export const TeamActivityPageInput = Schema.Struct({
-  projectId: ProjectId,
-  /** Exclusive: return items older than this sequence. */
-  beforeSequence: NonNegativeInt,
-  limit: PositiveInt.check(Schema.isLessThanOrEqualTo(TEAM_ACTIVITY_PAGE_MAX)),
-});
-export type TeamActivityPageInput = typeof TeamActivityPageInput.Type;
-
-export const TeamActivityPageResult = Schema.Struct({
-  items: Schema.Array(TeamActivityItem),
-  /**
-   * Where the next page starts. It can be older than the last item: the
-   * server skips rows the caller cannot see. Null when nothing older remains.
-   */
-  nextBeforeSequence: Schema.NullOr(NonNegativeInt),
-});
-export type TeamActivityPageResult = typeof TeamActivityPageResult.Type;
-
-export const ProjectBriefHistoryInput = Schema.Struct({
-  projectId: ProjectId,
-  /** Exclusive: return versions older than this one. Omit for the newest. */
-  beforeVersion: Schema.optional(PositiveInt),
-  limit: PositiveInt.check(Schema.isLessThanOrEqualTo(50)),
-});
-export type ProjectBriefHistoryInput = typeof ProjectBriefHistoryInput.Type;
-
-export const ProjectBriefHistoryResult = Schema.Struct({
-  versions: Schema.Array(ProjectBriefVersion),
-  hasMore: Schema.Boolean,
-});
-export type ProjectBriefHistoryResult = typeof ProjectBriefHistoryResult.Type;
-
-export const ProjectBriefUpdateInput = Schema.Struct({
-  projectId: ProjectId,
-  text: ProjectBriefText,
-  /**
-   * The version the editor started from (null for a project with no brief).
-   * A save on top of a newer version fails with `conflict` instead of
-   * silently overwriting a teammate's edit.
-   */
-  expectedVersion: Schema.NullOr(PositiveInt),
-});
-export type ProjectBriefUpdateInput = typeof ProjectBriefUpdateInput.Type;
-
-export const ProjectMemberFocusSetInput = Schema.Struct({
-  projectId: ProjectId,
-  /** Null clears the caller's focus. Always the caller's own focus. */
-  focus: Schema.NullOr(ProjectMemberFocusText),
-});
-export type ProjectMemberFocusSetInput = typeof ProjectMemberFocusSetInput.Type;
-
-export const ProjectMemberFocusSetResult = Schema.Struct({
-  focus: Schema.NullOr(ProjectMemberFocus),
-});
-export type ProjectMemberFocusSetResult = typeof ProjectMemberFocusSetResult.Type;
-
-export class TeamOverviewError extends Schema.TaggedError<TeamOverviewError>()(
-  "TeamOverviewError",
-  {
-    reason: Schema.Literals(["forbidden", "not-found", "conflict", "internal"]),
-    message: TrimmedNonEmptyString,
-  },
-) {}
-
-/**
- * Whether a thread belongs on a member's team overview: shared threads, plus
- * the member's own (threads without a recorded creator belong to the
- * environment owner). Callers have already checked project membership.
- * Other members' private threads never appear, even for admins.
- */
-export const isThreadOnTeamOverview = (
-  thread: {
-    readonly createdBy?: MemberId | null | undefined;
-    readonly visibility?: ThreadVisibility | undefined;
-  },
-  memberId: MemberId,
-): boolean => isThreadShared(thread) || threadOwnerOf(thread) === memberId;
 
 /**
  * Deterministic work-card status from turn/session state. Precedence: what
@@ -204,7 +85,7 @@ export type TeamWorkCardStatus = typeof TeamWorkCardStatus.Type;
 
 /**
  * Work-card status from a thread shell, for servers that publish it (the team
- * hub summary). Same rule as client-runtime's `deriveTeamWorkCardStatus`.
+ * hub summary).
  */
 export const teamWorkCardStatusOf = (thread: {
   readonly hasPendingApprovals: boolean;

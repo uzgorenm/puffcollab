@@ -69,6 +69,8 @@ import {
   type HubInvitationCancelInput,
   type HubInvitationRespondInput,
   type HubInviteInput,
+  type HubBriefUpdateInput,
+  type HubFocusSetInput,
   type HubLeaveProjectInput,
   type HubLinkProjectInput,
   type HubMemberRemoveInput,
@@ -183,6 +185,10 @@ export class HubSync extends Context.Service<
     readonly subscribeProjectTeam: (projectId: ProjectId) => Stream.Stream<HubTeamResult>;
     /** Admins remove another member from a linked project's hub project. */
     readonly removeMember: (input: HubMemberRemoveInput) => Effect.Effect<void, HubLocalError>;
+    /** Saves a new brief version on the hub; `conflict` when a teammate saved first. */
+    readonly updateBrief: (input: HubBriefUpdateInput) => Effect.Effect<void, HubLocalError>;
+    /** Sets or clears the viewer's own focus on the hub. */
+    readonly setFocus: (input: HubFocusSetInput) => Effect.Effect<void, HubLocalError>;
     /** Leaves a linked project's hub project and unlinks the local project from it. */
     readonly leaveProject: (input: HubLeaveProjectInput) => Effect.Effect<void, HubLocalError>;
     /** The full patch of a teammate's turn, when the hub delivered one. */
@@ -892,6 +898,10 @@ const make = Effect.gen(function* () {
         state: project,
         viewer: state.account,
         accounts: accountsOf(state),
+        localThreadIdOf: (hubThreadId) =>
+          isOwnThread(hubThreadId)
+            ? parseHubThreadId(hubThreadId).threadId
+            : mirrorThreadIdOf(hubThreadId),
       }),
     };
   };
@@ -2047,6 +2057,29 @@ const make = Effect.gen(function* () {
       }));
     });
 
+  const updateBrief: HubSync["Service"]["updateBrief"] = (input) =>
+    Effect.gen(function* () {
+      const link = yield* requireProjectLink(input.projectId);
+      yield* request((requestId) => ({
+        type: "brief.update",
+        requestId,
+        projectId: link.hubProjectId,
+        text: input.text,
+        expectedVersion: input.expectedVersion,
+      }));
+    });
+
+  const setFocus: HubSync["Service"]["setFocus"] = (input) =>
+    Effect.gen(function* () {
+      const link = yield* requireProjectLink(input.projectId);
+      yield* request((requestId) => ({
+        type: "focus.set",
+        requestId,
+        projectId: link.hubProjectId,
+        focus: input.focus,
+      }));
+    });
+
   const leaveProject: HubSync["Service"]["leaveProject"] = (input) =>
     Effect.gen(function* () {
       const link = yield* requireProjectLink(input.projectId);
@@ -2217,6 +2250,8 @@ const make = Effect.gen(function* () {
         Stream.changesWith((left, right) => encodeTeamResult(left) === encodeTeamResult(right)),
       ),
     removeMember,
+    updateBrief,
+    setFocus,
     leaveProject,
     getRemoteTurnDiff: (threadId, checkpointTurnCount) =>
       store.getRemoteDiff(threadId, checkpointTurnCount).pipe(Effect.orElseSucceed(() => null)),

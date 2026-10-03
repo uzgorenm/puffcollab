@@ -57,10 +57,6 @@ import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/Projectio
 import { ProjectionThreadRepositoryLive } from "../../persistence/Layers/ProjectionThreads.ts";
 import { ServerConfig } from "../../config.ts";
 import {
-  makeTeamOverviewProjector,
-  TEAM_OVERVIEW_PROJECTOR_NAME,
-} from "../../team/TeamOverviewProjection.ts";
-import {
   OrchestrationProjectionPipeline,
   type OrchestrationProjectionPipelineShape,
 } from "../Services/ProjectionPipeline.ts";
@@ -85,7 +81,6 @@ export const ORCHESTRATION_PROJECTOR_NAMES = {
   threadTurns: "projection.thread-turns",
   checkpoints: "projection.checkpoints",
   pendingApprovals: "projection.pending-approvals",
-  teamOverview: TEAM_OVERVIEW_PROJECTOR_NAME,
   threadRelatedLinks: RELATED_THREAD_LINKS_PROJECTOR,
 } as const;
 
@@ -2090,10 +2085,6 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       {
         name: ORCHESTRATION_PROJECTOR_NAMES.threads,
         apply: applyThreadsProjection,
-      },
-      {
-        name: ORCHESTRATION_PROJECTOR_NAMES.teamOverview,
-        apply: makeTeamOverviewProjector(sql).apply,
       },
       {
         name: ORCHESTRATION_PROJECTOR_NAMES.threadRelatedLinks,

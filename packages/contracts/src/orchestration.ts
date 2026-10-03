@@ -1200,27 +1200,6 @@ export const ProjectMemberFocusText = TrimmedNonEmptyString.check(
   Schema.isMaxLength(PROJECT_MEMBER_FOCUS_MAX_LENGTH),
 );
 
-// Team overview commands (Puff Collab). Internal: only the TeamOverview service
-// dispatches them, after checking project membership, and it fills `memberId`
-// from the authenticated session so a member can only set their own focus.
-const ProjectBriefUpdateCommand = Schema.Struct({
-  type: Schema.Literal("project.brief.update"),
-  commandId: CommandId,
-  projectId: ProjectId,
-  text: ProjectBriefText,
-  createdAt: IsoDateTime,
-});
-
-const ProjectMemberFocusSetCommand = Schema.Struct({
-  type: Schema.Literal("project.member-focus.set"),
-  commandId: CommandId,
-  projectId: ProjectId,
-  memberId: MemberId,
-  // Null clears the member's focus.
-  focus: Schema.NullOr(ProjectMemberFocusText),
-  createdAt: IsoDateTime,
-});
-
 const ThreadCreateCommand = Schema.Struct({
   type: Schema.Literal("thread.create"),
   commandId: CommandId,
@@ -1805,8 +1784,6 @@ const ThreadPullRequestLinkSyncCommand = Schema.Struct({
 });
 
 const InternalOrchestrationCommand = Schema.Union([
-  ProjectBriefUpdateCommand,
-  ProjectMemberFocusSetCommand,
   ThreadAutoSettleCommand,
   ThreadPullRequestSyncCommand,
   ThreadPullRequestLinkSyncCommand,
@@ -1911,7 +1888,8 @@ export const ProjectDeletedPayload = Schema.Struct({
   deletedAt: IsoDateTime,
 });
 
-// The author of a brief version or focus change is the event's `metadata.actor`.
+// Stage 3 team overview events, from before team data moved to the hub. Kept
+// so persisted events still decode; nothing produces or projects them now.
 export const ProjectBriefUpdatedPayload = Schema.Struct({
   projectId: ProjectId,
   text: Schema.String,

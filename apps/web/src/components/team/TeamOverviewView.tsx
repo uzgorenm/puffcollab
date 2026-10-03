@@ -1,23 +1,19 @@
 import {
   type EnvironmentId,
-  type Member,
-  type MemberId,
+  type HubLocalActivityItem,
+  type HubLocalTeam,
+  type HubLocalWorkCard,
   PROJECT_BRIEF_MAX_LENGTH,
   PROJECT_MEMBER_FOCUS_MAX_LENGTH,
   type ProjectId,
-  type TeamActivityItem,
-  type TeamActivityPageResult,
-  type TeamWorkCard,
   type TeamWorkCardStatus,
 } from "@t3tools/contracts";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
-  appendOlderTeamActivity,
-  deriveTeamWorkCards,
+  hubTeamMemberName,
   TEAM_WORK_CARD_STATUS_LABELS,
   teamActivityHasActor,
   teamActivityPhrase,
-  type TeamOverviewState,
 } from "@t3tools/client-runtime/state/team-overview";
 import { Link } from "@tanstack/react-router";
 import { GitBranchIcon, UserPlusIcon } from "lucide-react";
@@ -25,11 +21,8 @@ import { useMemo, useState } from "react";
 
 import { isElectron } from "../../env";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
-import { useCooperationProjectSummaries } from "../../state/cooperation";
-import { useProject, useThreadShellsForProjectRefs } from "../../state/entities";
-import { useEnvironmentMembers } from "../../state/members";
-import { useEnvironmentQuery } from "../../state/query";
-import { teamOverviewEnvironment, useTeamOverview } from "../../state/teamOverview";
+import { useProject } from "../../state/entities";
+import { hubEnvironment, useHubProjectLink, useHubStatus, useHubTeam } from "../../state/hub";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
@@ -41,20 +34,8 @@ import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
+import { HubProjectLinkPanel } from "./HubProjectDialog";
 import { openProjectPeopleDialog } from "./projectPeopleDialogStore";
-
-type Members = ReadonlyMap<MemberId, Member>;
-
-const memberName = (
-  members: Members,
-  memberId: MemberId | null,
-  currentMemberId: MemberId | null,
-) =>
-  memberId === null
-    ? "Someone"
-    : memberId === currentMemberId
-      ? "You"
-      : (members.get(memberId)?.displayName ?? "A former member");
 
 const STATUS_BADGE: Readonly<
   Record<TeamWorkCardStatus, "warning" | "info" | "error" | "success" | "secondary">
@@ -78,20 +59,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function BriefEditor({
   environmentId,
-  overview,
-  members,
-  currentMemberId,
+  team,
 }: {
   environmentId: EnvironmentId;
-  overview: TeamOverviewState;
-  members: Members;
-  currentMemberId: MemberId | null;
+  team: HubLocalTeam;
 }) {
-  const updateBrief = useAtomCommand(teamOverviewEnvironment.updateBrief);
+  const updateBrief = useAtomCommand(hubEnvironment.updateBrief);
   const [draft, setDraft] = useState<{ text: string; baseVersion: number | null } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const brief = overview.brief;
+  const brief = team.brief;
 
   const save = async () => {
     if (draft === null) return;
@@ -99,7 +75,7 @@ function BriefEditor({
     const result = await updateBrief({
       environmentId,
       input: {
-        projectId: overview.projectId,
+        projectId: team.projectId,
         text: draft.text.trim(),
         expectedVersion: draft.baseVersion,
       },
@@ -128,16 +104,11 @@ function BriefEditor({
           <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
             {brief ? (
               <span>
-                Version {brief.version} by {memberName(members, brief.authorId, currentMemberId)},{" "}
+                Version {brief.version} by {hubTeamMemberName(team, brief.authorId)},{" "}
                 {formatRelativeTimeLabel(brief.createdAt)}
               </span>
             ) : null}
             <div className="flex-1" />
-            {brief && brief.version > 1 ? (
-              <Button size="xs" variant="ghost" onClick={() => setShowHistory((open) => !open)}>
-                {showHistory ? "Hide history" : "History"}
-              </Button>
-            ) : null}
             <Button
               size="xs"
               variant="outline"
@@ -169,82 +140,25 @@ function BriefEditor({
           </div>
         </div>
       )}
-      {showHistory && brief ? (
-        <BriefHistory
-          environmentId={environmentId}
-          projectId={overview.projectId}
-          beforeVersion={brief.version}
-          members={members}
-          currentMemberId={currentMemberId}
-        />
-      ) : null}
     </Section>
   );
 }
 
-function BriefHistory({
-  environmentId,
-  projectId,
-  beforeVersion,
-  members,
-  currentMemberId,
-}: {
-  environmentId: EnvironmentId;
-  projectId: ProjectId;
-  beforeVersion: number;
-  members: Members;
-  currentMemberId: MemberId | null;
-}) {
-  const history = useEnvironmentQuery(
-    teamOverviewEnvironment.briefHistory({
-      environmentId,
-      input: { projectId, beforeVersion, limit: 20 },
-    }),
-  ).data;
-  if (history === null) return <Spinner />;
-  return (
-    <ol className="flex flex-col gap-2">
-      {history.versions.map((version) => (
-        <li key={version.version} className="rounded-lg border border-dashed p-3">
-          <div className="mb-1 text-muted-foreground text-xs">
-            Version {version.version} by {memberName(members, version.authorId, currentMemberId)},{" "}
-            {formatRelativeTimeLabel(version.createdAt)}
-          </div>
-          <p className="whitespace-pre-wrap text-sm">{version.text || "(empty)"}</p>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function FocusList({
-  environmentId,
-  overview,
-  members,
-  currentMemberId,
-}: {
-  environmentId: EnvironmentId;
-  overview: TeamOverviewState;
-  members: Members;
-  currentMemberId: MemberId | null;
-}) {
-  const setFocus = useAtomCommand(teamOverviewEnvironment.setFocus);
-  const own = overview.focuses.find((focus) => focus.memberId === currentMemberId) ?? null;
+function FocusList({ environmentId, team }: { environmentId: EnvironmentId; team: HubLocalTeam }) {
+  const setFocus = useAtomCommand(hubEnvironment.setFocus);
+  const own = team.focuses.find((focus) => focus.accountId === team.viewerAccountId) ?? null;
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const submit = async (focus: string | null) => {
     setSaving(true);
-    const result = await setFocus({
-      environmentId,
-      input: { projectId: overview.projectId, focus },
-    });
+    const result = await setFocus({ environmentId, input: { projectId: team.projectId, focus } });
     setSaving(false);
     if (result._tag === "Success") setDraft(null);
     else toastManager.add({ type: "error", title: "Could not update your focus" });
   };
 
-  const others = overview.focuses.filter((focus) => focus.memberId !== currentMemberId);
+  const others = team.focuses.filter((focus) => focus.accountId !== team.viewerAccountId);
   const value = draft ?? own?.focus ?? "";
   return (
     <Section title="Current focus">
@@ -278,10 +192,8 @@ function FocusList({
         {others.length > 0 ? (
           <ul className="flex flex-col gap-1.5 pt-1">
             {others.map((focus) => (
-              <li key={focus.memberId} className="flex flex-wrap gap-x-2 text-sm">
-                <span className="font-medium">
-                  {memberName(members, focus.memberId, currentMemberId)}
-                </span>
+              <li key={focus.accountId} className="flex flex-wrap gap-x-2 text-sm">
+                <span className="font-medium">{hubTeamMemberName(team, focus.accountId)}</span>
                 <span className="min-w-0 flex-1">{focus.focus}</span>
                 <span className="text-muted-foreground text-xs">
                   {formatRelativeTimeLabel(focus.updatedAt)}
@@ -297,14 +209,12 @@ function FocusList({
 
 function WorkCardTile({
   environmentId,
+  team,
   card,
-  members,
-  currentMemberId,
 }: {
   environmentId: EnvironmentId;
-  card: TeamWorkCard;
-  members: Members;
-  currentMemberId: MemberId | null;
+  team: HubLocalTeam;
+  card: HubLocalWorkCard;
 }) {
   return (
     <Link
@@ -322,7 +232,7 @@ function WorkCardTile({
         <p className="line-clamp-3 text-muted-foreground text-sm">{card.analysis.summary}</p>
       ) : null}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs">
-        <span>{memberName(members, card.ownerId, currentMemberId)}</span>
+        <span>{hubTeamMemberName(team, card.ownerId)}</span>
         <span>{formatRelativeTimeLabel(card.lastActivityAt)}</span>
         {card.branch ? (
           <span className="flex min-w-0 items-center gap-1">
@@ -337,54 +247,29 @@ function WorkCardTile({
 
 function ActivityFeed({
   environmentId,
-  overview,
-  members,
-  currentMemberId,
-  threadTitles,
+  team,
 }: {
   environmentId: EnvironmentId;
-  overview: TeamOverviewState;
-  members: Members;
-  currentMemberId: MemberId | null;
-  threadTitles: ReadonlyMap<string, string>;
+  team: HubLocalTeam;
 }) {
-  const loadPage = useAtomCommand(teamOverviewEnvironment.activityPage);
-  const [older, setOlder] = useState<TeamActivityPageResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const view = older === null ? overview : appendOlderTeamActivity(overview, older);
-  const nextBeforeSequence = view.activityNextBeforeSequence;
-
-  const loadOlder = async () => {
-    if (nextBeforeSequence === null) return;
-    setLoading(true);
-    const result = await loadPage({
-      environmentId,
-      input: { projectId: overview.projectId, beforeSequence: nextBeforeSequence, limit: 30 },
-    });
-    setLoading(false);
-    if (result._tag === "Success") {
-      const page = result.value;
-      setOlder((previous) => ({
-        items: [...(previous?.items ?? []), ...page.items],
-        nextBeforeSequence: page.nextBeforeSequence,
-      }));
-    }
-  };
-
-  const describe = (item: TeamActivityItem) => {
+  const threadTitles = useMemo(
+    () => new Map(team.workCards.map((card) => [card.threadId as string, card.title])),
+    [team.workCards],
+  );
+  const describe = (item: HubLocalActivityItem) => {
     const phrase = teamActivityPhrase(item.kind);
     return teamActivityHasActor(item.kind)
-      ? `${memberName(members, item.actorId, currentMemberId)} ${phrase}`
+      ? `${hubTeamMemberName(team, item.actorId)} ${phrase}`
       : phrase;
   };
 
   return (
     <Section title="Activity">
-      {view.activity.length === 0 ? (
+      {team.activity.length === 0 ? (
         <p className="text-muted-foreground text-sm">No recent activity.</p>
       ) : (
         <ol className="flex flex-col divide-y rounded-lg border bg-card">
-          {view.activity.map((item) => {
+          {team.activity.map((item) => {
             const threadTitle = item.threadId ? threadTitles.get(item.threadId) : undefined;
             return (
               <li key={item.id} className="flex flex-col gap-0.5 px-3 py-2 text-sm">
@@ -418,25 +303,14 @@ function ActivityFeed({
           })}
         </ol>
       )}
-      {nextBeforeSequence !== null ? (
-        <Button
-          size="xs"
-          variant="ghost"
-          className="self-start"
-          disabled={loading}
-          onClick={() => void loadOlder()}
-        >
-          {loading ? <Spinner /> : null}
-          Load older
-        </Button>
-      ) : null}
     </Section>
   );
 }
 
 /**
- * The team view of one project: brief, everyone's focus, a work card per
- * visible thread, and recent activity.
+ * The team view of a hub-linked project: brief, everyone's focus, a work card
+ * per shared thread, and recent activity, all from the team hub. A project that
+ * is not on the hub shows how to link it instead.
  */
 export function TeamOverviewView({
   environmentId,
@@ -450,29 +324,10 @@ export function TeamOverviewView({
     () => scopeProjectRef(environmentId, projectId),
     [environmentId, projectId],
   );
-  const projectRefs = useMemo(() => [projectRef], [projectRef]);
   const project = useProject(projectRef);
-  const threads = useThreadShellsForProjectRefs(projectRefs);
-  const { members, currentMemberId } = useEnvironmentMembers(environmentId);
-  const { overview, error } = useTeamOverview({ environmentId, projectId });
-  const analysisByThreadId = useCooperationProjectSummaries(environmentId, projectId);
-
-  const cards = useMemo(
-    () =>
-      currentMemberId === null
-        ? []
-        : deriveTeamWorkCards({
-            threads,
-            projectId,
-            memberId: currentMemberId,
-            analysisByThreadId,
-          }),
-    [analysisByThreadId, currentMemberId, projectId, threads],
-  );
-  const threadTitles = useMemo(
-    () => new Map(threads.map((thread) => [thread.id as string, thread.title])),
-    [threads],
-  );
+  const status = useHubStatus(environmentId);
+  const link = useHubProjectLink(environmentId, projectId);
+  const team = useHubTeam(environmentId, projectId);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -480,63 +335,58 @@ export function TeamOverviewView({
         <h1 className="min-w-0 flex-1 truncate font-medium text-sm">
           {project ? `${project.title} · Team` : "Team"}
         </h1>
-        <Button
-          size="xs"
-          variant="outline"
-          onClick={() => openProjectPeopleDialog({ environmentId, projectId })}
-        >
-          <UserPlusIcon />
-          Invite people
-        </Button>
+        {link !== null ? (
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => openProjectPeopleDialog({ environmentId, projectId })}
+          >
+            <UserPlusIcon />
+            People
+          </Button>
+        ) : null}
       </WorkspacePageHeader>
       <div className="topbar-scroll-fade min-h-0 flex-1 overflow-y-auto">
         <WorkspacePageContainer width="wide">
-          {overview === null ? (
-            error ? (
-              <p className="text-destructive-foreground text-sm">{error}</p>
-            ) : (
+          {link === null ? (
+            <Section title="Team overview">
+              <p className="text-muted-foreground text-sm">
+                Team overview shows the brief, focus, shared work and activity of a project you
+                share with teammates on the team hub.
+              </p>
+              <HubProjectLinkPanel environmentId={environmentId} projectId={projectId} />
+            </Section>
+          ) : team === null ? (
+            status?.state === "online" ? (
               <Spinner />
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                Team overview appears once this computer reaches the team hub.
+              </p>
             )
           ) : (
             <>
-              <BriefEditor
-                environmentId={environmentId}
-                overview={overview}
-                members={members}
-                currentMemberId={currentMemberId}
-              />
-              <FocusList
-                environmentId={environmentId}
-                overview={overview}
-                members={members}
-                currentMemberId={currentMemberId}
-              />
+              <BriefEditor environmentId={environmentId} team={team} />
+              <FocusList environmentId={environmentId} team={team} />
               <Section title="Work">
-                {cards.length === 0 ? (
+                {team.workCards.length === 0 ? (
                   <p className="text-muted-foreground text-sm">
-                    No shared threads yet. Threads you own and threads teammates share show up here.
+                    No shared threads yet. Shared threads from you and your teammates show up here.
                   </p>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {cards.map((card) => (
+                    {team.workCards.map((card) => (
                       <WorkCardTile
-                        key={card.threadId}
+                        key={card.hubThreadId}
                         environmentId={environmentId}
+                        team={team}
                         card={card}
-                        members={members}
-                        currentMemberId={currentMemberId}
                       />
                     ))}
                   </div>
                 )}
               </Section>
-              <ActivityFeed
-                environmentId={environmentId}
-                overview={overview}
-                members={members}
-                currentMemberId={currentMemberId}
-                threadTitles={threadTitles}
-              />
+              <ActivityFeed environmentId={environmentId} team={team} />
             </>
           )}
         </WorkspacePageContainer>
