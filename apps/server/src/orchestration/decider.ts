@@ -2426,6 +2426,57 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    // The teammate's own links travel with their thread's hub summary; the
+    // mirror takes them as they are (no validation: a related thread this
+    // server cannot see simply renders as unavailable).
+    case "thread.hub-related.set": {
+      const thread = yield* requireThread({ readModel, command, threadId: command.threadId });
+      if (!isRemoteHubThread(thread)) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Thread '${command.threadId}' is local; its owner links related threads.`,
+        });
+      }
+      const current = new Map(
+        (thread.relatedThreads ?? []).map((link) => [link.relatedThreadId, link]),
+      );
+      const wanted = new Map(command.links.map((link) => [link.relatedThreadId, link]));
+      const events: Array<PlannedOrchestrationEvent> = [];
+      const base = () =>
+        withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+          metadata: { hubOrigin: {} },
+        });
+      for (const [relatedThreadId] of current) {
+        if (wanted.has(relatedThreadId)) continue;
+        events.push({
+          ...(yield* base()),
+          type: "thread.related-thread-unlinked",
+          payload: { threadId: command.threadId, relatedThreadId },
+        });
+      }
+      for (const [relatedThreadId, link] of wanted) {
+        const existing = current.get(relatedThreadId);
+        if (existing?.relationship === link.relationship) continue;
+        events.push({
+          ...(yield* base()),
+          type: "thread.related-thread-linked",
+          payload: {
+            threadId: command.threadId,
+            link: {
+              relatedThreadId,
+              relationship: link.relationship,
+              linkedAt: existing?.linkedAt ?? command.createdAt,
+            },
+          },
+        });
+      }
+      return events;
+    }
+
     default: {
       command satisfies never;
       const fallback = command as never as { type: string };

@@ -9,17 +9,16 @@ import { Pressable, View } from "react-native";
 
 import { SymbolView } from "../../components/AppSymbol";
 import { SettingsSection } from "../settings/components/SettingsSection";
-import type { EnvironmentMembers } from "../../state/members";
 import {
   relatedWorkEnvironment,
   useRelatedWorkSuggestions,
   useResolvedRelatedThreads,
 } from "../../state/related-work";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { relatedThreadOwnerLabel } from "@t3tools/client-runtime/state/related-work";
 import {
   RELATED_THREAD_RELATIONSHIP_LABELS,
   RELATED_THREAD_STATUS_LABELS,
-  teamMemberName,
 } from "./team-presentation";
 import { TeamPillButton } from "./TeamPillButton";
 import { TeamCardBody, TeamMutedText, TeamRow } from "./TeamRows";
@@ -38,10 +37,9 @@ export function RelatedThreadsSection(props: {
   > | null;
   readonly isOwner: boolean;
   readonly teamEnabled: boolean;
-  readonly roster: EnvironmentMembers;
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
-  const { thread, roster } = props;
+  const { thread } = props;
   const resolved = useResolvedRelatedThreads(props.environmentId, thread?.relatedThreads);
   const link = useAtomCommand(relatedWorkEnvironment.link, "Link related thread");
   const unlink = useAtomCommand(relatedWorkEnvironment.unlink, "Unlink related thread");
@@ -64,8 +62,6 @@ export function RelatedThreadsSection(props: {
 
   if (thread === null || (resolved.length === 0 && !canLink)) return null;
 
-  const ownerLabel = (memberId: Parameters<typeof teamMemberName>[1]) =>
-    teamMemberName(roster.members, memberId, roster.currentMemberId);
   const linkTo = (relatedThreadId: ThreadId, relationship: RelatedThreadRelationship) =>
     void link({
       environmentId: props.environmentId,
@@ -97,7 +93,7 @@ export function RelatedThreadsSection(props: {
             key={entry.link.relatedThreadId}
             divided={index > 0}
             title={entry.title}
-            detail={`${relationship} · ${ownerLabel(entry.createdBy)} · ${RELATED_THREAD_STATUS_LABELS[entry.status]}`}
+            detail={`${relationship} · ${relatedThreadOwnerLabel(entry)} · ${RELATED_THREAD_STATUS_LABELS[entry.status]}`}
             trailing={unlinkButton}
             onPress={() => props.onOpenThread(entry.link.relatedThreadId)}
           />
@@ -124,7 +120,7 @@ export function RelatedThreadsSection(props: {
             <View key={suggestion.threadId} className="border-t border-border-subtle pb-3">
               <TeamRow
                 title={suggestion.title}
-                detail={ownerLabel(suggestion.createdBy)}
+                detail={relatedThreadOwnerLabel(suggestion)}
                 onPress={() => props.onOpenThread(suggestion.threadId)}
               />
               <View className="flex-row gap-2 px-4">

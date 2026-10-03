@@ -3,11 +3,11 @@ import * as Schema from "effect/Schema";
 import {
   CommandId,
   IsoDateTime,
-  MemberId,
   ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { HubThreadLink } from "./hubLocal.ts";
 
 /**
  * Related work (Puff Collab): a thread owner can record that their thread
@@ -15,7 +15,8 @@ import {
  * A link only names the other thread. Clients resolve its title, owner, and
  * status from threads they can already see, so a link to a thread the viewer
  * cannot see reveals nothing about it. Links are shown to people, never sent
- * to the agent.
+ * to the agent. A shared thread's links to other shared threads travel with
+ * its hub summary, so teammates see them on its mirror.
  */
 export const RelatedThreadRelationship = Schema.Literals(["complementary", "alternative"]);
 export type RelatedThreadRelationship = typeof RelatedThreadRelationship.Type;
@@ -85,7 +86,8 @@ export type RelatedWorkSuggestInput = typeof RelatedWorkSuggestInput.Type;
 export const RelatedWorkSuggestion = Schema.Struct({
   threadId: ThreadId,
   title: TrimmedNonEmptyString,
-  createdBy: Schema.NullOr(MemberId),
+  /** Set for hub-linked threads; a remote one is a teammate's (see `hubThreadOwnerName`). */
+  hub: Schema.optional(HubThreadLink),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   /** Draft words found in the thread, for a short "matched" hint. */
   matchedTerms: Schema.Array(Schema.String),

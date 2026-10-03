@@ -56,6 +56,7 @@ import {
   ThreadVisibilitySetPayload,
 } from "./orchestration.ts";
 import { PROJECT_INVITATION_PENDING_LIMIT, ProjectInvitationState } from "./projectInvitations.ts";
+import { RelatedThreadRelationship } from "./relatedWork.ts";
 import {
   ProjectBriefVersion,
   ProjectMemberFocus,
@@ -456,6 +457,13 @@ export const HubThreadCooperation = Schema.Struct(
 );
 export type HubThreadCooperation = typeof HubThreadCooperation.Type;
 
+/** A related-thread link the owner recorded, to another shared thread of the project. */
+export const HubRelatedThread = Schema.Struct({
+  threadId: HubThreadId,
+  relationship: RelatedThreadRelationship,
+});
+export type HubRelatedThread = typeof HubRelatedThread.Type;
+
 /** What the owner publishes about a thread for lists and work cards (`thread.summary-set`). */
 export const HubThreadSummaryFields = Schema.Struct({
   title: TrimmedNonEmptyString,
@@ -463,6 +471,8 @@ export const HubThreadSummaryFields = Schema.Struct({
   status: TeamWorkCardStatus,
   updatedAt: IsoDateTime,
   cooperation: Schema.optional(HubThreadCooperation),
+  /** Links to the project's other shared threads; private ones are never listed. Absent = none. */
+  related: Schema.optional(Schema.Array(HubRelatedThread)),
 });
 export type HubThreadSummaryFields = typeof HubThreadSummaryFields.Type;
 

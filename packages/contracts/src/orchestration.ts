@@ -31,6 +31,7 @@ import { OWNER_MEMBER_ID } from "./members.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   RelatedThreadLink,
+  RelatedThreadRelationship,
   ThreadRelatedThreadLinkCommand,
   ThreadRelatedThreadLinkedPayload,
   ThreadRelatedThreadUnlinkCommand,
@@ -2247,11 +2248,26 @@ const ThreadHubLinkSetCommand = Schema.Struct({
   hub: Schema.NullOr(HubThreadLink),
 });
 
+/**
+ * Server-internal (HubSync): the related threads a teammate linked on their
+ * thread, as its hub summary lists them, applied to the read-only mirror.
+ */
+const ThreadHubRelatedSetCommand = Schema.Struct({
+  type: Schema.Literal("thread.hub-related.set"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  links: Schema.Array(
+    Schema.Struct({ relatedThreadId: ThreadId, relationship: RelatedThreadRelationship }),
+  ),
+  createdAt: IsoDateTime,
+});
+
 const HubOrchestrationCommand = Schema.Union([
   ThreadHubMirrorApplyCommand,
   ThreadHubCommentAddCommand,
   ThreadHubCommentDeleteCommand,
   ThreadHubLinkSetCommand,
+  ThreadHubRelatedSetCommand,
 ]);
 export type HubOrchestrationCommand = typeof HubOrchestrationCommand.Type;
 

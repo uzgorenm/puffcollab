@@ -25,9 +25,11 @@ export const HUB_BOOTSTRAP_TURN_LIMIT = 20;
 /** Newest activities included in that bootstrap. */
 const HUB_BOOTSTRAP_ACTIVITY_LIMIT = 200;
 
+const MIRROR_PREFIX = "hub:";
+
 /** The local id of a teammate's mirrored thread. Stable per hub thread. */
 export const mirrorThreadIdOf = (hubThreadId: HubThreadId): ThreadId =>
-  ThreadId.make(`hub:${hubThreadId}`);
+  ThreadId.make(`${MIRROR_PREFIX}${hubThreadId}`);
 
 interface TimedBody {
   readonly occurredAt: string;
@@ -55,7 +57,26 @@ export const sameSummary = (
   left !== null &&
   left.title === right.title &&
   left.branch === right.branch &&
-  left.status === right.status;
+  left.status === right.status &&
+  cooperationKey(left.cooperation) === cooperationKey(right.cooperation) &&
+  relatedKey(left.related) === relatedKey(right.related);
+
+const cooperationKey = (cooperation: HubThreadSummaryFields["cooperation"]) =>
+  cooperation === undefined
+    ? ""
+    : [
+        cooperation.featureTopic,
+        cooperation.analysisEnabled,
+        cooperation.textEnabled,
+        cooperation.awarenessNotify,
+      ].join(" ");
+
+const relatedKey = (related: HubThreadSummaryFields["related"]) =>
+  (related ?? []).map((link) => `${link.threadId} ${link.relationship}`).join("\n");
+
+/** The hub id of a mirror's thread, or null for a local thread id. */
+export const hubThreadIdOfMirror = (threadId: ThreadId): HubThreadId | null =>
+  threadId.startsWith(MIRROR_PREFIX) ? (threadId.slice(MIRROR_PREFIX.length) as HubThreadId) : null;
 
 /**
  * The first events of a thread's hub stream, rebuilt from its current state:

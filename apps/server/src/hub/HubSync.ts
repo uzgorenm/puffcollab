@@ -62,6 +62,8 @@ import {
   type HubThreadId,
   type HubThreadLink,
   type HubThreadSummary,
+  type HubThreadSummaryFields,
+  type HubRelatedThread,
   hubProtocolMismatchSide,
   hubRepositoryKey,
   hubThreadIdOf,
@@ -120,6 +122,7 @@ import {
   bootstrapBodies,
   HUB_BOOTSTRAP_TURN_LIMIT,
   hubSummaryOf,
+  hubThreadIdOfMirror,
   mirrorThreadIdOf,
   sameSummary,
   toLocalInvitation,
@@ -560,11 +563,45 @@ const make = Effect.gen(function* () {
     return rows;
   };
 
+  /**
+   * The thread's related-thread links as hub ids: teammates' mirrors and this
+   * server's own published (shared) threads. Links to private or unpublished
+   * threads stay local.
+   */
+  const relatedOf = (threadId: ThreadId) =>
+    Effect.gen(function* () {
+      if (linkId === null) return [];
+      const rows = yield* sql<{ relatedThreadId: string; relationship: string }>`
+        SELECT related_thread_id AS "relatedThreadId", relationship
+        FROM projection_thread_related_links WHERE thread_id = ${threadId}
+        ORDER BY related_thread_id
+      `;
+      const related: Array<HubRelatedThread> = [];
+      for (const row of rows) {
+        if (row.relationship !== "complementary" && row.relationship !== "alternative") continue;
+        const relatedId = ThreadId.make(row.relatedThreadId);
+        const hubThreadId =
+          hubThreadIdOfMirror(relatedId) ??
+          ((yield* store.getPublished(relatedId)) !== null
+            ? hubThreadIdOf(linkId, relatedId)
+            : null);
+        if (hubThreadId !== null) {
+          related.push({ threadId: hubThreadId, relationship: row.relationship });
+        }
+      }
+      return related;
+    });
+
   const currentSummary = (threadId: ThreadId) =>
-    snapshots.getThreadShellById(threadId).pipe(
-      Effect.map((shell) => (Option.isSome(shell) ? hubSummaryOf(shell.value) : null)),
-      Effect.orElseSucceed(() => null),
-    );
+    Effect.gen(function* () {
+      const shell = yield* snapshots.getThreadShellById(threadId);
+      if (Option.isNone(shell)) return null;
+      const related = yield* relatedOf(threadId);
+      return {
+        ...hubSummaryOf(shell.value),
+        ...(related.length > 0 ? { related } : {}),
+      } satisfies HubThreadSummaryFields;
+    }).pipe(Effect.orElseSucceed(() => null));
 
   /** Starts (or restarts, with `reset`) a thread's hub stream from its current state. */
   const bootstrap = (threadId: ThreadId, reset: boolean) =>
@@ -650,6 +687,8 @@ const make = Effect.gen(function* () {
     "thread.settled",
     "thread.unsettled",
     "thread.auto-settled",
+    "thread.related-thread-linked",
+    "thread.related-thread-unlinked",
   ]);
 
   const turnDiffBody = (
@@ -1003,6 +1042,46 @@ const make = Effect.gen(function* () {
       }
     });
 
+  // Last related-thread links applied to each mirror, so summaries that did
+  // not change them dispatch nothing. Cleared when a mirror is rebuilt.
+  const mirrorRelatedMemo = new Map<ThreadId, string>();
+
+  /** Applies the related threads a teammate listed on their thread's summary to its mirror. */
+  const syncMirrorRelated = (summary: HubThreadSummary) =>
+    Effect.gen(function* () {
+      if (isOwnThread(summary.threadId)) return;
+      const remote = yield* store.getRemote(summary.threadId);
+      if (remote === null || remote.generation === 0) return;
+      const links = (summary.related ?? []).map((link) => ({
+        relatedThreadId: isOwnThread(link.threadId)
+          ? parseHubThreadId(link.threadId).threadId
+          : mirrorThreadIdOf(link.threadId),
+        relationship: link.relationship,
+      }));
+      const key = links.map((link) => `${link.relatedThreadId} ${link.relationship}`).join("\n");
+      if (mirrorRelatedMemo.get(remote.localThreadId) === key) return;
+      // Remembered even when the engine refuses it: that means nothing changed
+      // (or the mirror is being rebuilt, which clears the memo).
+      mirrorRelatedMemo.set(remote.localThreadId, key);
+      yield* engine
+        .dispatch({
+          type: "thread.hub-related.set",
+          commandId: yield* newCommandId,
+          threadId: remote.localThreadId,
+          links,
+          createdAt: yield* nowIso,
+        })
+        .pipe(Effect.ignore);
+    }).pipe(Effect.ignore);
+
+  const summaryOfHubThread = (state: TeamState, hubThreadId: HubThreadId) => {
+    for (const project of state.projects.values()) {
+      const found = project.threads.find((summary) => summary.threadId === hubThreadId);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+
   const removeMirrorsOfProject = (hubProjectId: HubProjectId) =>
     Effect.gen(function* () {
       for (const remote of yield* store.listRemote) {
@@ -1039,6 +1118,7 @@ const make = Effect.gen(function* () {
         message.reset === true ||
         (remote.generation !== 0 && message.generation !== remote.generation);
       const base = reset ? 0 : remote.seq;
+      if (reset) mirrorRelatedMemo.delete(remote.localThreadId);
       const events = message.events.filter((event) => event.seq > base);
       const last = events.at(-1);
       if (last === undefined) {
@@ -1092,6 +1172,8 @@ const make = Effect.gen(function* () {
       }
       const seq = last?.seq ?? 0;
       yield* store.setRemoteCursor(remote.hubThreadId, message.generation, seq);
+      const summary = summaryOfHubThread(yield* SubscriptionRef.get(team), message.threadId);
+      if (summary !== undefined) yield* syncMirrorRelated(summary);
       yield* send(current, {
         type: "ack",
         cursors: [{ threadId: message.threadId, generation: message.generation, seq }],
@@ -1356,7 +1438,10 @@ const make = Effect.gen(function* () {
         if (!listed.has(remote.hubThreadId)) yield* removeMirror(remote.hubThreadId);
       }
       for (const state of message.projects) {
-        for (const summary of state.threads) yield* ensureSubscribed(current, summary);
+        for (const summary of state.threads) {
+          yield* ensureSubscribed(current, summary);
+          yield* syncMirrorRelated(summary);
+        }
       }
       yield* refreshQueued;
       yield* refreshAllSyncStates;
@@ -1372,7 +1457,10 @@ const make = Effect.gen(function* () {
             projects.set(message.state.project.projectId, message.state);
             return { ...state, projects };
           });
-          for (const summary of message.state.threads) yield* ensureSubscribed(current, summary);
+          for (const summary of message.state.threads) {
+            yield* ensureSubscribed(current, summary);
+            yield* syncMirrorRelated(summary);
+          }
           return;
         }
         case "team.removed": {
@@ -1393,7 +1481,8 @@ const make = Effect.gen(function* () {
               message.summary,
             ],
           }));
-          return yield* ensureSubscribed(current, message.summary);
+          yield* ensureSubscribed(current, message.summary);
+          return yield* syncMirrorRelated(message.summary);
         }
         case "team.brief":
           return yield* updateProject(message.brief.projectId, (state) => ({

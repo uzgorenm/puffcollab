@@ -1,5 +1,7 @@
 import {
   CommandId,
+  HubAccountId,
+  HubThreadId,
   MemberId,
   type OrchestrationReadModel,
   type OrchestrationThread,
@@ -206,6 +208,78 @@ it.layer(NodeServices.layer)("related-thread link decider", (it) => {
       });
       const event = Array.isArray(decided) ? decided[0] : decided;
       expect(event?.type).toBe("thread.related-thread-unlinked");
+    }),
+  );
+
+  it.effect("a mirror takes the related threads its owner listed on the hub", () =>
+    Effect.gen(function* () {
+      const mirrorId = ThreadId.make("hub:link-bob:t1");
+      const model = readModel();
+      const withMirror: OrchestrationReadModel = {
+        ...model,
+        threads: [
+          ...model.threads,
+          makeThread(mirrorId, {
+            visibility: "shared",
+            relatedThreads: [
+              { relatedThreadId: SHARED, relationship: "alternative", linkedAt: NOW },
+              { relatedThreadId: PRIVATE, relationship: "complementary", linkedAt: NOW },
+            ],
+            hub: {
+              threadId: HubThreadId.make("link-bob:t1"),
+              ownerId: HubAccountId.make("acct-bob"),
+              ownerLogin: "bob",
+              ownerDisplayName: "Bob",
+              remote: true,
+              syncState: "synced",
+            },
+          }),
+        ],
+      };
+      const decided = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.hub-related.set",
+          commandId: CommandId.make("cmd-hub-related"),
+          threadId: mirrorId,
+          links: [
+            { relatedThreadId: SHARED, relationship: "complementary" },
+            { relatedThreadId: MINE, relationship: "alternative" },
+          ],
+          createdAt: NOW,
+        },
+        readModel: withMirror,
+      });
+      const events = Array.isArray(decided) ? decided : [decided];
+      expect(
+        events.map((event) => [
+          event.type,
+          event.type === "thread.related-thread-linked"
+            ? `${event.payload.link.relatedThreadId}:${event.payload.link.relationship}`
+            : event.type === "thread.related-thread-unlinked"
+              ? event.payload.relatedThreadId
+              : null,
+          event.metadata.hubOrigin !== undefined,
+        ]),
+      ).toEqual([
+        ["thread.related-thread-unlinked", PRIVATE, true],
+        ["thread.related-thread-linked", `${SHARED}:complementary`, true],
+        ["thread.related-thread-linked", `${MINE}:alternative`, true],
+      ]);
+
+      // A local thread's links are its owner's to make.
+      const local = yield* Effect.exit(
+        decideOrchestrationCommand({
+          command: {
+            type: "thread.hub-related.set",
+            commandId: CommandId.make("cmd-hub-related-local"),
+            threadId: MINE,
+            links: [],
+            createdAt: NOW,
+          },
+          readModel: withMirror,
+        }),
+      );
+      expect(Exit.isFailure(local)).toBe(true);
     }),
   );
 });

@@ -1,19 +1,19 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import {
+  HubAccountId,
+  HubThreadLink,
+  HubThreadId,
   MessageId,
-  type MemberId,
-  OWNER_MEMBER_ID,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
-import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { ProjectionThreadMessageRepositoryLive } from "../persistence/Layers/ProjectionThreadMessages.ts";
@@ -21,19 +21,17 @@ import { ProjectionThreadRepositoryLive } from "../persistence/Layers/Projection
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { ProjectionThreadMessageRepository } from "../persistence/Services/ProjectionThreadMessages.ts";
 import { ProjectionThreadRepository } from "../persistence/Services/ProjectionThreads.ts";
-import * as TeamAccess from "../team/TeamAccess.ts";
 import * as RelatedWork from "./RelatedWork.ts";
 
 const testLayer = RelatedWork.layer.pipe(
-  Layer.provideMerge(TeamAccess.layer),
   Layer.provideMerge(ProjectionThreadRepositoryLive),
   Layer.provideMerge(ProjectionThreadMessageRepositoryLive),
-  Layer.provideMerge(EnvironmentAuth.layer),
-  Layer.provideMerge(ServerSecretStore.layer),
   Layer.provideMerge(SqlitePersistenceMemory),
   Layer.provide(ServerEnvironment.identityLayer),
   Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-related-work-test-" })),
 );
+
+const encodeHubLink = Schema.encodeSync(Schema.fromJsonString(HubThreadLink));
 
 const PROJECT = ProjectId.make("project-1");
 const OTHER_PROJECT = ProjectId.make("project-2");
@@ -42,8 +40,9 @@ const NOW = "2026-01-01T00:00:00.000Z";
 const seedThread = (input: {
   readonly id: string;
   readonly title: string;
-  readonly createdBy: MemberId | null;
   readonly visibility: "shared" | "private" | null;
+  /** A teammate's mirror from the team hub. */
+  readonly hub?: HubThreadLink;
   readonly projectId?: ProjectId;
   readonly firstMessage?: string;
   readonly archived?: boolean;
@@ -72,7 +71,7 @@ const seedThread = (input: {
       snoozedUntil: null,
       snoozedAt: null,
       pinnedAt: null,
-      createdBy: input.createdBy,
+      createdBy: null,
       latestUserMessageAt: null,
       pendingApprovalCount: 0,
       pendingUserInputCount: 0,
@@ -92,124 +91,123 @@ const seedThread = (input: {
       });
     }
     yield* sql`UPDATE projection_threads SET visibility = ${input.visibility} WHERE thread_id = ${threadId}`;
+    if (input.hub !== undefined) {
+      yield* sql`UPDATE projection_threads SET hub_link_json = ${encodeHubLink(input.hub)} WHERE thread_id = ${threadId}`;
+    }
+  });
+
+const bobsLink = (id: string): HubThreadLink => ({
+  threadId: HubThreadId.make(`link-bob:${id}`),
+  ownerId: HubAccountId.make("acct-bob"),
+  ownerLogin: "bob",
+  ownerDisplayName: "Bob",
+  remote: true,
+  syncState: "synced",
+});
+
+const linkToHub = (projectId: ProjectId) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`
+      INSERT INTO hub_project_links (project_id, hub_project_id, hub_project_title, linked_at)
+      VALUES (${projectId}, ${`hub-${projectId}`}, 'Team app', ${NOW})
+    `;
   });
 
 const setup = Effect.gen(function* () {
-  const team = yield* TeamAccess.TeamAccess;
-  const alice = yield* team.addMember({ username: "alice", displayName: "Alice", role: "member" });
-  const bob = yield* team.addMember({ username: "bob", displayName: "Bob", role: "member" });
-  const carol = yield* team.addMember({ username: "carol", displayName: "Carol", role: "member" });
-  for (const member of [alice, bob]) {
-    yield* team.addProjectMember({ projectId: PROJECT, memberId: member.memberId });
-    yield* team.addProjectMember({ projectId: OTHER_PROJECT, memberId: member.memberId });
-  }
+  yield* linkToHub(PROJECT);
   yield* seedThread({
-    id: "bob-shared",
+    id: "hub:link-bob:shared",
     title: "OAuth login redirect loop",
-    createdBy: bob.memberId,
     visibility: "shared",
+    hub: bobsLink("shared"),
   });
   yield* seedThread({
-    id: "bob-shared-message",
+    id: "hub:link-bob:shared-message",
     title: "Auth cleanup",
-    createdBy: bob.memberId,
     visibility: "shared",
+    hub: bobsLink("shared-message"),
     firstMessage: "The oauth login redirect never returns to settings",
   });
   yield* seedThread({
-    id: "bob-private",
+    id: "mine-shared",
+    title: "OAuth login redirect mine",
+    visibility: "shared",
+  });
+  yield* seedThread({
+    id: "mine-private",
     title: "OAuth login redirect secret plan",
-    createdBy: bob.memberId,
     visibility: "private",
   });
+  yield* seedThread({ id: "mine-legacy", title: "OAuth login redirect legacy", visibility: null });
   yield* seedThread({
-    id: "bob-legacy",
-    title: "OAuth login redirect legacy",
-    createdBy: bob.memberId,
-    visibility: null,
-  });
-  yield* seedThread({
-    id: "bob-other-project",
-    title: "OAuth login redirect elsewhere",
-    createdBy: bob.memberId,
-    visibility: "shared",
-    projectId: OTHER_PROJECT,
-  });
-  yield* seedThread({
-    id: "bob-archived",
+    id: "hub:link-bob:archived",
     title: "OAuth login redirect archived",
-    createdBy: bob.memberId,
     visibility: "shared",
+    hub: bobsLink("archived"),
     archived: true,
   });
   yield* seedThread({
-    id: "alice-shared",
-    title: "OAuth login redirect mine",
-    createdBy: alice.memberId,
+    id: "unlinked-shared",
+    title: "OAuth login redirect elsewhere",
     visibility: "shared",
+    projectId: OTHER_PROJECT,
   });
-  yield* seedThread({
-    id: "owner-shared",
-    title: "OAuth login redirect owner",
-    createdBy: null,
-    visibility: "shared",
-  });
-  return { alice, bob, carol };
 });
 
 const DRAFT = "Fix the OAuth login redirect";
 
 it.layer(NodeServices.layer)("RelatedWork.suggest", (it) => {
-  it.effect("suggests other people's shared threads in the same project only", () =>
-    Effect.gen(function* () {
-      const { alice } = yield* setup;
-      const relatedWork = yield* RelatedWork.RelatedWork;
-      const result = yield* relatedWork.suggest(alice.memberId, {
-        projectId: PROJECT,
-        text: DRAFT,
-        limit: 5,
-      });
-      expect(result.suggestions.map((entry) => entry.threadId).toSorted()).toEqual([
-        "bob-shared",
-        "bob-shared-message",
-        "owner-shared",
-      ]);
-      // A title match outranks a first-message match.
-      expect(result.suggestions.at(-1)?.threadId).toBe("bob-shared-message");
-    }).pipe(Effect.provide(testLayer)),
-  );
-
-  it.effect("treats ownerless threads as the environment owner's own", () =>
+  it.effect("suggests mirrors and own shared threads of a hub-linked project", () =>
     Effect.gen(function* () {
       yield* setup;
       const relatedWork = yield* RelatedWork.RelatedWork;
-      const result = yield* relatedWork.suggest(OWNER_MEMBER_ID, {
-        projectId: PROJECT,
-        text: DRAFT,
-        limit: 5,
-      });
-      expect(result.suggestions.map((entry) => entry.threadId)).not.toContain("owner-shared");
-      expect(result.suggestions.map((entry) => entry.threadId)).toContain("alice-shared");
+      const result = yield* relatedWork.suggest({ projectId: PROJECT, text: DRAFT, limit: 5 });
+      expect(result.suggestions.map((entry) => entry.threadId).toSorted()).toEqual([
+        "hub:link-bob:shared",
+        "hub:link-bob:shared-message",
+        "mine-shared",
+      ]);
+      // A title match outranks a first-message match.
+      expect(result.suggestions.at(-1)?.threadId).toBe("hub:link-bob:shared-message");
+      expect(
+        result.suggestions.find((entry) => entry.threadId === "hub:link-bob:shared")?.hub,
+      ).toMatchObject({ remote: true, ownerLogin: "bob" });
+      expect(
+        result.suggestions.find((entry) => entry.threadId === "mine-shared")?.hub,
+      ).toBeUndefined();
     }).pipe(Effect.provide(testLayer)),
   );
 
-  it.effect("excludes the thread being shared and returns nothing outside the project", () =>
+  it.effect("never matches private threads or projects off the hub", () =>
     Effect.gen(function* () {
-      const { alice, carol } = yield* setup;
+      yield* setup;
       const relatedWork = yield* RelatedWork.RelatedWork;
-      const excluded = yield* relatedWork.suggest(alice.memberId, {
+      const ids = (yield* relatedWork.suggest({
         projectId: PROJECT,
         text: DRAFT,
-        excludeThreadId: ThreadId.make("bob-shared"),
+        limit: 5,
+      })).suggestions.map((entry) => entry.threadId);
+      expect(ids).not.toContain("mine-private");
+      expect(ids).not.toContain("mine-legacy");
+      const unlinked = yield* relatedWork.suggest({ projectId: OTHER_PROJECT, text: DRAFT });
+      expect(unlinked.suggestions).toEqual([]);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("excludes the thread being composed", () =>
+    Effect.gen(function* () {
+      yield* setup;
+      const relatedWork = yield* RelatedWork.RelatedWork;
+      const excluded = yield* relatedWork.suggest({
+        projectId: PROJECT,
+        text: DRAFT,
+        excludeThreadId: ThreadId.make("hub:link-bob:shared"),
         limit: 5,
       });
-      expect(excluded.suggestions.map((entry) => entry.threadId)).not.toContain("bob-shared");
-
-      const outsider = yield* relatedWork.suggest(carol.memberId, {
-        projectId: PROJECT,
-        text: DRAFT,
-      });
-      expect(outsider.suggestions).toEqual([]);
+      expect(excluded.suggestions.map((entry) => entry.threadId)).not.toContain(
+        "hub:link-bob:shared",
+      );
     }).pipe(Effect.provide(testLayer)),
   );
 });

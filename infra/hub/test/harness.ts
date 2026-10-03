@@ -385,7 +385,12 @@ export const at = (n = 0) => new Date(Date.UTC(2026, 9, 1, 12, 0, n)).toISOStrin
 
 export const summaryEvent = (
   seq: number,
-  fields: Partial<{ title: string; status: string; cooperation: Record<string, unknown> }> = {},
+  fields: Partial<{
+    title: string;
+    status: string;
+    cooperation: Record<string, unknown>;
+    related: ReadonlyArray<{ threadId: string; relationship: string }>;
+  }> = {},
 ): HubThreadEvent =>
   ({
     seq,
@@ -398,6 +403,7 @@ export const summaryEvent = (
         status: fields.status ?? "working",
         updatedAt: at(seq),
         ...(fields.cooperation ? { cooperation: fields.cooperation } : {}),
+        ...(fields.related ? { related: fields.related } : {}),
       },
     },
   }) as HubThreadEvent;

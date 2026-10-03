@@ -1,12 +1,12 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isRelatedThreadOwner,
+  relatedThreadOwnerLabel,
   type RelatedThreadStatus,
   type ResolvedRelatedThread,
 } from "@t3tools/client-runtime/state/related-work";
 import type {
   EnvironmentId,
-  MemberId,
   ProjectId,
   RelatedThreadRelationship,
   RelatedWorkSuggestion,
@@ -21,7 +21,6 @@ import { useRelatedWorkReviewStore } from "~/relatedWorkReviewStore";
 import { useThreadCollabFocusRequested, useThreadCollabFocusStore } from "~/threadCollabFocusStore";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useThreadDetail } from "~/state/entities";
-import { useEnvironmentMembers } from "~/state/members";
 import {
   relatedWorkEnvironment,
   useRelatedWorkSuggestions,
@@ -43,15 +42,6 @@ const STATUS_LABEL: Record<RelatedThreadStatus, string> = {
   settled: "Settled",
   archived: "Archived",
 };
-
-function useOwnerName(environmentId: EnvironmentId) {
-  const { members, currentMemberId } = useEnvironmentMembers(environmentId);
-  return (memberId: MemberId | null) => {
-    if (memberId !== null && memberId === currentMemberId) return "you";
-    const member = memberId === null ? undefined : members.get(memberId);
-    return member?.displayName ?? (memberId === null ? "the owner" : "a teammate");
-  };
-}
 
 function ThreadLink(props: {
   environmentId: EnvironmentId;
@@ -84,7 +74,6 @@ export function RelatedWorkComposerStrip(props: {
     projectId: props.projectId,
     text: prompt,
   });
-  const ownerName = useOwnerName(props.environmentId);
   if (suggestions.length === 0) return null;
   return (
     <div
@@ -100,7 +89,7 @@ export function RelatedWorkComposerStrip(props: {
           <ThreadLink environmentId={props.environmentId} threadId={suggestion.threadId}>
             {suggestion.title}
           </ThreadLink>
-          <span className="shrink-0">· {ownerName(suggestion.createdBy)}</span>
+          <span className="shrink-0">· {relatedThreadOwnerLabel(suggestion)}</span>
         </span>
       ))}
     </div>
@@ -110,7 +99,6 @@ export function RelatedWorkComposerStrip(props: {
 function LinkedRow(props: {
   environmentId: EnvironmentId;
   entry: ResolvedRelatedThread;
-  ownerName: (memberId: MemberId | null) => string;
   onUnlink: (() => void) | null;
 }) {
   const { entry } = props;
@@ -123,7 +111,7 @@ function LinkedRow(props: {
             {entry.title}
           </ThreadLink>
           <span className="shrink-0 text-muted-foreground text-xs">
-            {props.ownerName(entry.createdBy)} · {STATUS_LABEL[entry.status]}
+            {relatedThreadOwnerLabel(entry)} · {STATUS_LABEL[entry.status]}
           </span>
         </span>
       ) : (
@@ -146,7 +134,6 @@ function LinkedRow(props: {
 function SuggestionRow(props: {
   environmentId: EnvironmentId;
   suggestion: RelatedWorkSuggestion;
-  ownerName: (memberId: MemberId | null) => string;
   onLink: (relationship: RelatedThreadRelationship) => void;
 }) {
   return (
@@ -156,7 +143,7 @@ function SuggestionRow(props: {
           {props.suggestion.title}
         </ThreadLink>
         <span className="shrink-0 text-muted-foreground text-xs">
-          {props.ownerName(props.suggestion.createdBy)}
+          {relatedThreadOwnerLabel(props.suggestion)}
         </span>
       </span>
       <span className="flex items-center gap-1.5">
@@ -188,13 +175,11 @@ export function RelatedThreadsControl(props: { environmentId: EnvironmentId; thr
   // The command palette's "Link related thread" opens the popover.
   const paletteRequested = useThreadCollabFocusRequested(threadKey, "related-threads");
   const clearPaletteRequest = useThreadCollabFocusStore((state) => state.clear);
-  const { members, currentMemberId } = useEnvironmentMembers(props.environmentId);
   const resolved = useResolvedRelatedThreads(props.environmentId, thread);
-  const ownerName = useOwnerName(props.environmentId);
   const [open, setOpen] = useState(false);
   const link = useAtomCommand(relatedWorkEnvironment.link);
   const unlink = useAtomCommand(relatedWorkEnvironment.unlink);
-  const isOwner = thread !== null && isRelatedThreadOwner(thread, currentMemberId);
+  const isOwner = thread !== null && isRelatedThreadOwner(thread);
   const draftText = useMemo(() => {
     if (thread === null) return "";
     const firstUserMessage = thread.messages.find((message) => message.role === "user")?.text;
@@ -227,7 +212,8 @@ export function RelatedThreadsControl(props: { environmentId: EnvironmentId; thr
   };
 
   // Single-person environments have nobody's work to relate to.
-  if (thread === null || (resolved.length === 0 && !(isOwner && members.size > 1))) return null;
+  if (thread === null || (resolved.length === 0 && !(isOwner && thread.hub !== undefined)))
+    return null;
 
   const target = (input: { relatedThreadId: ThreadId }) => ({
     environmentId: props.environmentId,
@@ -254,7 +240,6 @@ export function RelatedThreadsControl(props: { environmentId: EnvironmentId; thr
                   key={entry.link.relatedThreadId}
                   environmentId={props.environmentId}
                   entry={entry}
-                  ownerName={ownerName}
                   onUnlink={
                     isOwner
                       ? () => void unlink(target({ relatedThreadId: entry.link.relatedThreadId }))
@@ -277,7 +262,6 @@ export function RelatedThreadsControl(props: { environmentId: EnvironmentId; thr
                       key={suggestion.threadId}
                       environmentId={props.environmentId}
                       suggestion={suggestion}
-                      ownerName={ownerName}
                       onLink={(relationship) =>
                         void link({
                           environmentId: props.environmentId,

@@ -1236,6 +1236,75 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
     }).pipe(Effect.provide(baseLayer)),
   );
 
+  it.effect("syncs related-thread links both ways through thread summaries", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakeHub();
+      seedTeammateThread(fake);
+      yield* withHub(fake, (hub) =>
+        Effect.gen(function* () {
+          yield* linkEnvironment(hub, fake);
+          yield* setupProjects(hub);
+          yield* fake.waitFor(isAckFor(REMOTE_HUB_THREAD, 2));
+          const mirrorId = mirrorThreadIdOf(REMOTE_HUB_THREAD);
+          const own = ThreadId.make("t-own");
+          const secret = ThreadId.make("t-secret");
+          yield* createThread(own, PROJECT, "shared");
+          yield* createThread(secret, PROJECT, "private");
+          for (const [relatedThreadId, relationship] of [
+            [mirrorId, "complementary"],
+            [secret, "alternative"],
+          ] as const) {
+            yield* dispatch({
+              type: "thread.related-thread.link",
+              commandId: nextCommandId(),
+              threadId: own,
+              relatedThreadId,
+              relationship,
+            });
+          }
+          yield* hub.drain;
+          yield* waitStatus(hub, (status) => status.queuedEvents === 0);
+          const summaries = sharedEvents(fake, own).flatMap((event) =>
+            event.body.type === "thread.summary-set" ? [event.body.payload] : [],
+          );
+          // The private thread's link stays on this computer.
+          expect(summaries.at(-1)?.related).toEqual([
+            { threadId: REMOTE_HUB_THREAD, relationship: "complementary" },
+          ]);
+
+          // Bob linked his thread to ours: the mirror shows it.
+          const linked = yield* waitForEvent(
+            (event) =>
+              event.type === "thread.related-thread-linked" && event.aggregateId === mirrorId,
+          );
+          yield* fake.push({
+            type: "team.thread",
+            summary: {
+              threadId: REMOTE_HUB_THREAD,
+              projectId: HUB_PROJECT,
+              ownerId: BOB.accountId,
+              generation: 1,
+              lastSeq: 2,
+              title: "Bob's thread",
+              branch: null,
+              status: "idle",
+              updatedAt: NOW,
+              related: [
+                { threadId: HubThreadId.make(`${LINK_ID}:${own}`), relationship: "alternative" },
+              ],
+            },
+          });
+          yield* Fiber.join(linked);
+          const snapshots = yield* ProjectionSnapshotQuery;
+          const mirror = Option.getOrThrow(yield* snapshots.getThreadDetailById(mirrorId));
+          expect(mirror.relatedThreads).toEqual([
+            expect.objectContaining({ relatedThreadId: own, relationship: "alternative" }),
+          ]);
+        }),
+      );
+    }).pipe(Effect.provide(baseLayer)),
+  );
+
   it.effect("stops reconnecting on a protocol version mismatch", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakeHub({ range: { min: 99, max: 99 } });

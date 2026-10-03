@@ -299,6 +299,37 @@ describe("members", () => {
   });
 });
 
+describe("thread summaries", () => {
+  it("carry the owner's related-thread links and cooperation consent to members", async () => {
+    const { owner, mate, projectId } = await team();
+    const matesThread = `${mate.linkId}:m`;
+    const ownersThread = `${owner.linkId}:o`;
+    const cooperation = {
+      featureTopic: "refunds",
+      analysisEnabled: true,
+      textEnabled: false,
+      awarenessNotify: true,
+    };
+    await publish(mate.client, projectId, matesThread, [summaryEvent(1)]);
+    expect(
+      await publish(owner.client, projectId, ownersThread, [
+        summaryEvent(1, {
+          cooperation,
+          related: [{ threadId: matesThread, relationship: "complementary" }],
+        }),
+      ]),
+    ).toMatchObject({ type: "ack" });
+    const listed = await mate.client.nextOfType(
+      "team.thread",
+      (m) => m.summary.threadId === ownersThread,
+    );
+    expect(listed.summary).toMatchObject({
+      cooperation,
+      related: [{ threadId: matesThread, relationship: "complementary" }],
+    });
+  });
+});
+
 describe("comments and brief", () => {
   it("comments are idempotent, reach the owner, and only their author deletes them", async () => {
     const { owner, mate, projectId } = await team();

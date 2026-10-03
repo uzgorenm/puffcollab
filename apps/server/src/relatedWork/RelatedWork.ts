@@ -1,15 +1,16 @@
 /**
  * RelatedWork - possibly related shared threads for a draft (Puff Collab).
  *
- * Suggestions come from the projection tables only and never call a provider:
- * active shared threads in the same project, minus the caller's own, ranked
+ * Suggestions come from the projection tables only and never call a provider.
+ * Candidates are the shared threads of a project linked to the team hub:
+ * this server's own shared threads and teammates' mirrors, which live in the
+ * same tables. Private threads and projects off the hub never match. Ranked
  * by word overlap (see relatedWorkRanking.ts).
  *
  * @module RelatedWork
  */
 import {
-  MemberId,
-  OWNER_MEMBER_ID,
+  HubThreadLink,
   type RelatedWorkSuggestInput,
   type RelatedWorkSuggestResult,
   ThreadId,
@@ -17,10 +18,10 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import * as TeamAccess from "../team/TeamAccess.ts";
 import { rankRelatedWork, tokenize } from "./relatedWorkRanking.ts";
 
 const DEFAULT_LIMIT = 3;
@@ -43,15 +44,11 @@ export class RelatedWork extends Context.Service<
   {
     /**
      * Shared threads in `input.projectId` that might overlap with the draft,
-     * best match first. Empty when the member cannot see the project.
+     * best match first. Empty when the project is not linked to the team hub.
      */
     readonly suggest: (
-      memberId: MemberId,
       input: RelatedWorkSuggestInput,
-    ) => Effect.Effect<
-      RelatedWorkSuggestResult,
-      RelatedWorkPersistenceError | TeamAccess.TeamPersistenceError
-    >;
+    ) => Effect.Effect<RelatedWorkSuggestResult, RelatedWorkPersistenceError>;
   }
 >()("t3/relatedWork/RelatedWork") {}
 
@@ -59,14 +56,15 @@ interface CandidateRow {
   readonly threadId: string;
   readonly title: string;
   readonly branch: string | null;
-  readonly createdBy: string | null;
+  readonly hubLink: string | null;
   readonly updatedAt: string;
   readonly firstUserMessage: string | null;
 }
 
+const decodeHubLink = Schema.decodeUnknownOption(Schema.fromJsonString(HubThreadLink));
+
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const teamAccess = yield* TeamAccess.TeamAccess;
 
   const persistence =
     (operation: string) =>
@@ -75,13 +73,13 @@ const make = Effect.gen(function* () {
         Effect.mapError((cause) => new RelatedWorkPersistenceError({ operation, cause })),
       );
 
-  const listCandidates = (memberId: MemberId, input: RelatedWorkSuggestInput) =>
+  const listCandidates = (input: RelatedWorkSuggestInput) =>
     sql<CandidateRow>`
       SELECT
         threads.thread_id AS "threadId",
         threads.title AS "title",
         threads.branch AS "branch",
-        threads.created_by AS "createdBy",
+        threads.hub_link_json AS "hubLink",
         threads.updated_at AS "updatedAt",
         (
           SELECT substr(messages.text, 1, ${FIRST_MESSAGE_CHARS})
@@ -93,30 +91,34 @@ const make = Effect.gen(function* () {
         ) AS "firstUserMessage"
       FROM projection_threads AS threads
       WHERE threads.project_id = ${input.projectId}
+        AND EXISTS (SELECT 1 FROM hub_project_links WHERE project_id = ${input.projectId})
         AND threads.deleted_at IS NULL
         AND threads.archived_at IS NULL
         AND threads.visibility = 'shared'
-        AND COALESCE(threads.created_by, ${OWNER_MEMBER_ID}) <> ${memberId}
         AND threads.thread_id <> ${input.excludeThreadId ?? ""}
       ORDER BY threads.updated_at DESC, threads.thread_id ASC
       LIMIT ${MAX_CANDIDATES}
     `.pipe(persistence("listCandidates"));
 
-  const suggest: RelatedWork["Service"]["suggest"] = (memberId, input) =>
+  const suggest: RelatedWork["Service"]["suggest"] = (input) =>
     Effect.gen(function* () {
-      const empty: RelatedWorkSuggestResult = { suggestions: [] };
-      if (tokenize(input.text).size < 2) return empty;
-      if (!(yield* teamAccess.isProjectMember(memberId, input.projectId))) return empty;
-      const candidates = yield* listCandidates(memberId, input);
+      if (tokenize(input.text).size < 2) return { suggestions: [] };
+      const candidates = yield* listCandidates(input);
       const ranked = rankRelatedWork(input.text, candidates, input.limit ?? DEFAULT_LIMIT);
       return {
-        suggestions: ranked.map(({ candidate, matchedTerms }) => ({
-          threadId: ThreadId.make(candidate.threadId),
-          title: candidate.title,
-          createdBy: candidate.createdBy === null ? null : MemberId.make(candidate.createdBy),
-          branch: candidate.branch,
-          matchedTerms,
-        })),
+        suggestions: ranked.map(({ candidate, matchedTerms }) => {
+          const hub =
+            candidate.hubLink === null
+              ? undefined
+              : Option.getOrUndefined(decodeHubLink(candidate.hubLink));
+          return {
+            threadId: ThreadId.make(candidate.threadId),
+            title: candidate.title,
+            ...(hub !== undefined ? { hub } : {}),
+            branch: candidate.branch,
+            matchedTerms,
+          };
+        }),
       };
     });
 

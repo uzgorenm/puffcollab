@@ -2,10 +2,8 @@ import {
   type EnvironmentId,
   type HubThreadLink,
   isRemoteHubThread,
-  type MemberId,
   type OrchestrationThreadShell,
   type RelatedThreadLink,
-  threadOwnerOf,
   type ThreadId,
   WS_METHODS,
 } from "@t3tools/contracts";
@@ -13,6 +11,7 @@ import type * as Crypto from "effect/Crypto";
 import type { Atom } from "effect/unstable/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
+import { hubThreadOwnerName } from "./hub.ts";
 import {
   type LinkRelatedThreadInput,
   linkRelatedThread,
@@ -68,18 +67,22 @@ export function createRelatedWorkEnvironmentAtoms<R, E>(
 }
 
 /**
- * Threads without a recorded creator belong to the environment owner; a
- * teammate's remote hub mirror never belongs to the viewer.
+ * Every local thread belongs to the viewer (the environment owner); a
+ * teammate's mirror from the team hub never does.
  */
-export function isRelatedThreadOwner(
-  thread: {
-    readonly createdBy?: MemberId | null | undefined;
-    readonly hub?: HubThreadLink | undefined;
-  },
-  currentMemberId: MemberId | null,
-): boolean {
-  if (isRemoteHubThread(thread)) return false;
-  return currentMemberId !== null && threadOwnerOf(thread) === currentMemberId;
+export function isRelatedThreadOwner(thread: {
+  readonly hub?: HubThreadLink | undefined;
+}): boolean {
+  return !isRemoteHubThread(thread);
+}
+
+/** "you" for the viewer's own threads, the owner's name for a teammate's mirror. */
+export function relatedThreadOwnerLabel(thread: {
+  readonly hub?: HubThreadLink | undefined;
+}): string {
+  return thread.hub !== undefined && isRemoteHubThread(thread)
+    ? hubThreadOwnerName(thread.hub)
+    : "you";
 }
 
 export type RelatedThreadStatus = "working" | "active" | "settled" | "archived";
@@ -89,7 +92,7 @@ export type ResolvedRelatedThread =
       readonly kind: "visible";
       readonly link: RelatedThreadLink;
       readonly title: string;
-      readonly createdBy: MemberId | null;
+      readonly hub?: HubThreadLink;
       readonly status: RelatedThreadStatus;
     }
   // The viewer cannot see the other thread (private, removed, or another
@@ -98,7 +101,7 @@ export type ResolvedRelatedThread =
 
 type RelatedThreadShell = Pick<
   OrchestrationThreadShell,
-  "id" | "title" | "createdBy" | "archivedAt" | "settledAt" | "session"
+  "id" | "title" | "hub" | "archivedAt" | "settledAt" | "session"
 >;
 
 function relatedThreadStatus(thread: RelatedThreadShell): RelatedThreadStatus {
@@ -124,7 +127,7 @@ export function resolveRelatedThreads(
           kind: "visible",
           link,
           title: thread.title,
-          createdBy: thread.createdBy ?? null,
+          ...(thread.hub !== undefined ? { hub: thread.hub } : {}),
           status: relatedThreadStatus(thread),
         };
   });

@@ -3983,7 +3983,7 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             WS_METHODS.relatedWorkSuggest,
             relatedWork
-              .suggest(currentMemberId, input)
+              .suggest(input)
               .pipe(
                 Effect.mapError(
                   (cause) =>

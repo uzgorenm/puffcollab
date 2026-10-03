@@ -141,7 +141,6 @@ export function ThreadTeamRouteScreen(props: ThreadTeamRouteProps) {
               thread={detail}
               isOwner={collaboration.isOwner}
               teamEnabled={collaboration.teamEnabled}
-              roster={roster}
               onOpenThread={openThread}
             />
 
