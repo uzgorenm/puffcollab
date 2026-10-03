@@ -1,0 +1,35 @@
+// Puff Collab hub. The same file drives Cloudflare deploys and local/LAN runs
+// (`wrangler dev --local`). Secrets (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET)
+// come from `wrangler secret put` on Cloudflare and from `.dev.vars` locally;
+// never commit them. See README.md.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "puffcollab-hub",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "vars": {
+    // Public origin of this hub, no trailing slash. Override per environment,
+    // e.g. https://puffcollab-hub.<subdomain>.workers.dev or http://192.168.1.20:8787.
+    "HUB_PUBLIC_URL": "http://localhost:8787",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "puffcollab-hub",
+      // Placeholder: replace with the id printed by `wrangler d1 create puffcollab-hub`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "PROJECT_HUB", "class_name": "ProjectHub" },
+      { "name": "SYNC_SESSION", "class_name": "SyncSession" },
+    ],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectHub", "SyncSession"] }],
+}

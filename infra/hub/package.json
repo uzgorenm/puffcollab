@@ -1,0 +1,29 @@
+{
+  "name": "puffcollab-hub",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "lan": "node scripts/lan.ts",
+    "db:migrate:local": "wrangler d1 migrations apply puffcollab-hub --local",
+    "db:migrate:remote": "wrangler d1 migrations apply puffcollab-hub --remote",
+    "deploy": "wrangler deploy",
+    "test": "vp test run --config ../../vite.config.ts --dir .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260604.1",
+    "@types/node": "catalog:",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20260930.0-alpha",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "wrangler": "4.145.0"
+  }
+}
