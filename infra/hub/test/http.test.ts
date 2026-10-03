@@ -307,3 +307,38 @@ describe("project link", () => {
     expect(intrude.status).toBe(403);
   });
 });
+
+describe("dev local accounts", () => {
+  const devSignIn = (target: TestHub, origin = "http://hub.test") =>
+    target.fetch("/v1/auth/dev/sign-in", {
+      method: "POST",
+      redirect: "manual",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Origin: origin },
+      body: "login=offline-dev&returnTo=%2Flink",
+    });
+
+  it("are off by default", async () => {
+    expect((await devSignIn(hub)).status).toBe(404);
+    expect(await (await hub.fetch("/link")).text()).not.toContain("Sign in locally");
+  });
+
+  it("work on an http hub when enabled, and never on an https hub", async () => {
+    const lan = await TestHub.start({ vars: { HUB_DEV_LOCAL_ACCOUNTS: "1" } });
+    const internet = await TestHub.start({
+      vars: { HUB_DEV_LOCAL_ACCOUNTS: "1", HUB_PUBLIC_URL: "https://hub.example" },
+    });
+    try {
+      expect(await (await lan.fetch("/link")).text()).toContain("Sign in locally");
+      const signedIn = await devSignIn(lan);
+      expect(signedIn.status).toBe(303);
+      const cookie = signedIn.headers.getSetCookie()[0]!.split(";")[0]!;
+      const session = await lan.fetch("/v1/auth/session", { headers: { Cookie: cookie } });
+      expect(await session.json()).toMatchObject({ account: { githubLogin: "offline-dev" } });
+      expect((await devSignIn(lan, "https://evil.example")).status).toBe(403);
+      expect((await devSignIn(internet, "https://hub.example")).status).toBe(404);
+    } finally {
+      await lan.dispose();
+      await internet.dispose();
+    }
+  });
+});
