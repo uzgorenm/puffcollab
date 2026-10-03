@@ -12,12 +12,10 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { readLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";
 import { hubEnvironment, useHubStatus } from "../../state/hub";
-import { useEnvironmentMembers } from "../../state/members";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { toastManager } from "../ui/toast";
-import { AdminOnlySettingsNotice } from "./AdminOnlySettingsNotice";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 
 const TONE_DOT: Record<HubStatusTone, string> = {
@@ -42,11 +40,9 @@ function openVerificationUrl(url: string) {
 function HubUrlRow({
   environmentId,
   status,
-  disabled,
 }: {
   environmentId: EnvironmentId;
   status: HubLocalStatus;
-  disabled: boolean;
 }) {
   const configure = useAtomCommand(hubEnvironment.configure);
   const saved = status.hubUrl ?? "";
@@ -94,13 +90,12 @@ function HubUrlRow({
           type="url"
           placeholder={HUB_URL_PLACEHOLDER}
           value={value}
-          disabled={disabled}
           onChange={(event) => setDraft(event.target.value)}
           aria-label="Team hub address"
           autoComplete="off"
           spellCheck={false}
         />
-        <Button size="sm" type="submit" disabled={disabled || busy || !parsed.ok || !changed}>
+        <Button size="sm" type="submit" disabled={busy || !parsed.ok || !changed}>
           Save
         </Button>
       </form>
@@ -111,11 +106,9 @@ function HubUrlRow({
 function PendingLinkCode({
   environmentId,
   pendingLink,
-  disabled,
 }: {
   environmentId: EnvironmentId;
   pendingLink: HubPendingLink;
-  disabled: boolean;
 }) {
   const linkCancel = useAtomCommand(hubEnvironment.linkCancel);
   const { copyToClipboard, isCopied } = useCopyToClipboard<void>({
@@ -148,7 +141,6 @@ function PendingLinkCode({
         <Button
           size="xs"
           variant="ghost-muted"
-          disabled={disabled}
           onClick={() => void linkCancel({ environmentId, input: {} })}
         >
           Cancel
@@ -174,11 +166,9 @@ function PendingLinkCode({
 function HubAccountRow({
   environmentId,
   status,
-  disabled,
 }: {
   environmentId: EnvironmentId;
   status: HubLocalStatus;
-  disabled: boolean;
 }) {
   const unlink = useAtomCommand(hubEnvironment.unlink);
   const account = status.account;
@@ -215,12 +205,7 @@ function HubAccountRow({
             : `${projectCount} projects linked.`
       }
       control={
-        <Button
-          size="xs"
-          variant="ghost-destructive"
-          disabled={disabled}
-          onClick={() => void handleUnlink()}
-        >
+        <Button size="xs" variant="ghost-destructive" onClick={() => void handleUnlink()}>
           Unlink
         </Button>
       }
@@ -231,11 +216,9 @@ function HubAccountRow({
 function HubLinkRow({
   environmentId,
   status,
-  disabled,
 }: {
   environmentId: EnvironmentId;
   status: HubLocalStatus;
-  disabled: boolean;
 }) {
   const linkStart = useAtomCommand(hubEnvironment.linkStart);
   const [busy, setBusy] = useState(false);
@@ -253,7 +236,7 @@ function HubLinkRow({
       description="Sign in to the hub with GitHub and approve this computer."
       control={
         pendingLink === null ? (
-          <Button size="sm" disabled={disabled || busy} onClick={() => void handleLink()}>
+          <Button size="sm" disabled={busy} onClick={() => void handleLink()}>
             Link this computer
           </Button>
         ) : null
@@ -261,11 +244,7 @@ function HubLinkRow({
     >
       {pendingLink !== null ? (
         <div className="pt-2">
-          <PendingLinkCode
-            environmentId={environmentId}
-            pendingLink={pendingLink}
-            disabled={disabled}
-          />
+          <PendingLinkCode environmentId={environmentId} pendingLink={pendingLink} />
         </div>
       ) : null}
     </SettingsRow>
@@ -274,20 +253,16 @@ function HubLinkRow({
 
 /**
  * Settings → Connections → Team hub (Stage 7): where this computer's local
- * server links to the team hub. Linking is host-wide, so only admins (the
- * owner always is one) change it.
+ * server links to the team hub. Linking is host-wide: the environment owner
+ * changes it.
  */
 export function TeamHubSettings({ environmentId }: { environmentId: EnvironmentId | null }) {
   const status = useHubStatus(environmentId);
-  const { members, currentMemberId } = useEnvironmentMembers(environmentId);
-  const viewer = currentMemberId === null ? undefined : members.get(currentMemberId);
-  const readOnly = viewer !== undefined && viewer.role !== "admin";
   if (environmentId === null || status === null) return null;
   const summary = hubStatusSummary(status);
 
   return (
     <SettingsSection id="team-hub" title="Team hub">
-      <AdminOnlySettingsNotice environmentId={environmentId} />
       <SettingsRow
         title="Status"
         description={summary.detail ?? undefined}
@@ -298,9 +273,9 @@ export function TeamHubSettings({ environmentId }: { environmentId: EnvironmentI
           </span>
         }
       />
-      <HubUrlRow environmentId={environmentId} status={status} disabled={readOnly} />
-      <HubLinkRow environmentId={environmentId} status={status} disabled={readOnly} />
-      <HubAccountRow environmentId={environmentId} status={status} disabled={readOnly} />
+      <HubUrlRow environmentId={environmentId} status={status} />
+      <HubLinkRow environmentId={environmentId} status={status} />
+      <HubAccountRow environmentId={environmentId} status={status} />
     </SettingsSection>
   );
 }

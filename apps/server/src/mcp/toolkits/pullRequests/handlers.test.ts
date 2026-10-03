@@ -1,6 +1,5 @@
 import {
   EnvironmentId,
-  type MemberId,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
@@ -135,22 +134,20 @@ interface HarnessOptions {
   readonly thread?: OrchestrationThreadShell | null;
   readonly project?: OrchestrationProjectShell | null;
   readonly reject?: (command: OrchestrationCommand) => OrchestrationCommandInvariantError | null;
-  readonly deny?: (actor: MemberId, command: OrchestrationCommand) => boolean;
+  readonly deny?: (command: OrchestrationCommand) => boolean;
 }
 
 const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
   options: HarnessOptions = {},
 ) {
   const commands = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
-  const actors = yield* Ref.make<ReadonlyArray<MemberId | undefined>>([]);
   const thread = options.thread === undefined ? makeThread([]) : options.thread;
   const project = options.project === undefined ? makeProject() : options.project;
-  const dispatch: OrchestrationEngineShape["dispatch"] = (command, dispatchOptions) =>
+  const dispatch: OrchestrationEngineShape["dispatch"] = (command) =>
     Effect.gen(function* () {
       const rejection = options.reject?.(command) ?? null;
       if (rejection !== null) return yield* rejection;
       yield* Ref.update(commands, (recorded) => [...recorded, command]);
-      yield* Ref.update(actors, (recorded) => [...recorded, dispatchOptions?.actor]);
       return { sequence: 1 };
     });
   const dependencies = Layer.mergeAll(
@@ -166,12 +163,12 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       latestSequence: Effect.succeed(0),
     }),
     Layer.mock(ThreadAccess.ThreadAccess)({
-      authorizeCommand: (actor, command) =>
-        options.deny?.(actor, command) === true
+      authorizeCommand: (command) =>
+        options.deny?.(command) === true
           ? Effect.fail(
               new ThreadAccess.ThreadAccessDeniedError({
                 commandType: command.type,
-                reason: "not-thread-owner",
+                reason: "remote-hub-thread",
               }),
             )
           : Effect.void,
@@ -196,7 +193,7 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       Effect.provideService(McpInvocationContext.McpInvocationContext, invocation(capabilities)),
       Effect.provide(dependencies),
     );
-  return { commands, actors, call };
+  return { commands, call };
 });
 
 describe("pull request toolkit handlers", () => {
@@ -238,18 +235,6 @@ describe("pull request toolkit handlers", () => {
           source: "agent",
         },
       ]);
-    }),
-  );
-
-  it.effect("acts as the token thread's owner, not the environment owner", () =>
-    Effect.gen(function* () {
-      const ada = "ada" as MemberId;
-      const harness = yield* makeHarness({ thread: { ...makeThread([]), createdBy: ada } });
-      yield* harness.call("link_pull_request", { url: "https://github.com/t3tools/t3code/pull/1" });
-      yield* harness.call("unlink_pull_request", {
-        url: "https://github.com/t3tools/t3code/pull/1",
-      });
-      expect(yield* Ref.get(harness.actors)).toEqual([ada, ada]);
     }),
   );
 

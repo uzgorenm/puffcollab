@@ -10217,6 +10217,7 @@ export default function ChatView(props: ChatViewProps) {
                     {isLocalDraftThread ? (
                       <NewThreadVisibilityToggle
                         environmentId={environmentId}
+                        projectId={activeProject?.id ?? null}
                         threadKey={routeThreadKey}
                       />
                     ) : null}

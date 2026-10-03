@@ -1627,6 +1627,7 @@ export function NewTaskDraftScreen(props: {
       {flow.draftKey ? (
         <NewThreadVisibilityToggle
           environmentId={selectedProject.environmentId}
+          projectId={selectedProject.id}
           draftKey={flow.draftKey}
           queuedVisibility={flow.editingPendingTask?.creation?.visibility}
           disabled={isComposerInteractionLocked}

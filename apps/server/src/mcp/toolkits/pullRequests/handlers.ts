@@ -144,7 +144,7 @@ export function listThreadPullRequests(
 }
 
 const make = Effect.gen(function* () {
-  const dispatchAsThreadOwner = yield* makeMcpThreadDispatch;
+  const dispatchChecked = yield* makeMcpThreadDispatch;
   const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const crypto = yield* Crypto.Crypto;
 
@@ -194,7 +194,7 @@ const make = Effect.gen(function* () {
         const thread = yield* requireThread(PullRequestLinkFailedError);
         const project = yield* projectOf(thread, PullRequestLinkFailedError);
         const target = yield* resolveTarget(input, project);
-        const alreadyLinked = yield* dispatchAsThreadOwner(thread, {
+        const alreadyLinked = yield* dispatchChecked({
           type: "thread.pull-request.link",
           commandId: yield* commandId("mcp-pr-link", thread.id),
           threadId: thread.id,
@@ -217,7 +217,7 @@ const make = Effect.gen(function* () {
         const thread = yield* requireThread(PullRequestUnlinkFailedError);
         const project = yield* projectOf(thread, PullRequestUnlinkFailedError);
         const target = yield* resolveTarget(input, project);
-        const wasLinked = yield* dispatchAsThreadOwner(thread, {
+        const wasLinked = yield* dispatchChecked({
           type: "thread.pull-request.unlink",
           commandId: yield* commandId("mcp-pr-unlink", thread.id),
           threadId: thread.id,

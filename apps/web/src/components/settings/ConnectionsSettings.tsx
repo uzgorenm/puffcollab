@@ -83,7 +83,6 @@ import {
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { LoadBalancingSettings } from "./LoadBalancingSettings";
 import { TeamHubSettings } from "./TeamHubSettings";
-import { TeamMembersSettings } from "./TeamMembersSettings";
 import { CooperationAnalysisSettings } from "./CooperationAnalysisSettings";
 import { GitHubRoutingSettings } from "./GitHubRoutingSettings";
 import { Input } from "../ui/input";
@@ -3618,20 +3617,7 @@ export function ConnectionsSettings() {
       {primarySettings}
       <TeamHubSettings environmentId={primaryEnvironmentId} />
       {currentSessionScopes?.includes(AuthAccessWriteScope) ? (
-        <>
-          <TeamMembersSettings
-            environmentId={primaryEnvironmentId}
-            resolveSignInUrl={(credential) =>
-              resolveShareablePairingUrl({
-                credential,
-                endpoints: visibleDesktopAdvertisedEndpoints,
-                defaultEndpointKey: defaultDesktopAdvertisedEndpointKey,
-                endpointUrl: desktopServerExposureState?.endpointUrl,
-              })
-            }
-          />
-          <CooperationAnalysisSettings />
-        </>
+        <CooperationAnalysisSettings />
       ) : null}
       <SettingsSection
         {...searchableSetting("remote-environments")}

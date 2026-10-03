@@ -9,7 +9,6 @@ import {
   TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
-import { AdminOnlySettingsNotice } from "./AdminOnlySettingsNotice";
 import { useLocation } from "@tanstack/react-router";
 import {
   type KeyboardEvent,
@@ -1512,7 +1511,6 @@ export function KeybindingsSettingsPanel() {
 
   return (
     <SettingsPageContainer>
-      <AdminOnlySettingsNotice environmentId={primaryEnvironment?.environmentId ?? null} />
       <SettingsSection
         {...searchableSetting("keybindings")}
         headerAction={

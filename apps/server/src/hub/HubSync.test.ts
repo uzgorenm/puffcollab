@@ -25,7 +25,6 @@ import {
   negotiateHubProtocol,
   type OrchestrationCommand,
   type OrchestrationEvent,
-  OWNER_MEMBER_ID,
   ProjectId,
   ProviderInstanceId,
   type RepositoryIdentity,
@@ -47,7 +46,6 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { TestClock } from "effect/testing";
 
-import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as CheckpointDiffQuery from "../checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "../config.ts";
@@ -65,7 +63,6 @@ import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import { CooperationAnalyst } from "../cooperation/CooperationAnalyst.ts";
 import * as CooperationService from "../cooperation/CooperationService.ts";
-import * as TeamAccess from "../team/TeamAccess.ts";
 import * as ThreadAccess from "../team/ThreadAccess.ts";
 import * as HubSync from "./HubSync.ts";
 import * as HubTransport from "./HubTransport.ts";
@@ -492,8 +489,6 @@ const baseLayer = Layer.mergeAll(
       }),
   }),
 ).pipe(
-  Layer.provideMerge(TeamAccess.layer),
-  Layer.provideMerge(EnvironmentAuth.layer),
   Layer.provideMerge(ServerSecretStore.layer),
   Layer.provideMerge(SqlitePersistenceMemory),
   Layer.provide(ServerEnvironment.identityLayer),
@@ -531,9 +526,7 @@ const waitForEvent = (predicate: (event: OrchestrationEvent) => boolean) =>
 let commandCounter = 0;
 const nextCommandId = () => CommandId.make(`cmd-${(commandCounter += 1)}`);
 const dispatch = (command: OrchestrationCommand) =>
-  OrchestrationEngineService.pipe(
-    Effect.flatMap((engine) => engine.dispatch(command, { actor: OWNER_MEMBER_ID })),
-  );
+  OrchestrationEngineService.pipe(Effect.flatMap((engine) => engine.dispatch(command)));
 
 const PROJECT = ProjectId.make("project-linked");
 const OTHER_PROJECT = ProjectId.make("project-unlinked");
@@ -913,7 +906,7 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
           // Nothing local controls it, not even the environment owner.
           const access = yield* ThreadAccess.ThreadAccess;
           const denied = yield* Effect.flip(
-            access.authorizeCommand(OWNER_MEMBER_ID, {
+            access.authorizeCommand({
               type: "thread.turn.start",
               commandId: nextCommandId(),
               threadId: mirrorId,
@@ -931,7 +924,7 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
           expect(denied).toMatchObject({ reason: "remote-hub-thread" });
           for (const type of ["thread.archive", "thread.delete", "thread.session.stop"] as const) {
             const refused = yield* Effect.flip(
-              access.authorizeCommand(OWNER_MEMBER_ID, {
+              access.authorizeCommand({
                 type,
                 commandId: nextCommandId(),
                 threadId: mirrorId,
@@ -940,7 +933,7 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
             );
             expect(refused).toMatchObject({ reason: "remote-hub-thread" });
           }
-          yield* access.authorizeCommand(OWNER_MEMBER_ID, {
+          yield* access.authorizeCommand({
             type: "thread.comment.add",
             commandId: nextCommandId(),
             threadId: mirrorId,
@@ -1487,13 +1480,13 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
 
           // Pinning a mirror only changes this server's view; settling stays the owner's.
           const access = yield* ThreadAccess.ThreadAccess;
-          yield* access.authorizeCommand(OWNER_MEMBER_ID, {
+          yield* access.authorizeCommand({
             type: "thread.pin",
             commandId: nextCommandId(),
             threadId: mirrorId,
           });
           const settle = yield* Effect.flip(
-            access.authorizeCommand(OWNER_MEMBER_ID, {
+            access.authorizeCommand({
               type: "thread.settle",
               commandId: nextCommandId(),
               threadId: mirrorId,
@@ -1525,7 +1518,7 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
           }
           yield* Fiber.join(projected);
           const bobs = yield* Effect.flip(
-            access.authorizeCommand(OWNER_MEMBER_ID, {
+            access.authorizeCommand({
               type: "thread.comment.delete",
               commandId: nextCommandId(),
               threadId: mirrorId,
@@ -1539,7 +1532,7 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
             threadId: mirrorId,
             commentId: ThreadCommentId.make("c-mine"),
           };
-          yield* access.authorizeCommand(OWNER_MEMBER_ID, deleteMine);
+          yield* access.authorizeCommand(deleteMine);
           yield* dispatch(deleteMine);
           const sent = yield* fake.waitFor(
             (message): message is Extract<HubClientMessage, { type: "comment.delete" }> =>

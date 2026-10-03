@@ -60,7 +60,6 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeVcsStatus
   | typeof WS_METHODS.subscribeWorktreeSetup
   | typeof WS_METHODS.subscribeProjectClones
-  | typeof WS_METHODS.subscribeProjectInvitations
   | typeof WS_METHODS.hubSubscribeStatus
   | typeof WS_METHODS.hubSubscribeInvitations
   | typeof WS_METHODS.hubSubscribeTeam

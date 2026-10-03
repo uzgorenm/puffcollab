@@ -1,7 +1,6 @@
 import {
   HubAccountId,
   HubLocalError,
-  type Member,
   MemberId,
   type OrchestrationThreadComment,
   ThreadCommentId,
@@ -14,21 +13,10 @@ import {
   insertThreadCommentEntries,
   isHubConflict,
   teamActivityLine,
-  teamMemberName,
   threadRowMenuActionsForViewer,
 } from "./team-presentation";
 import { resolveNewThreadVisibility } from "../../state/new-thread-visibility";
 
-const member = (id: string, displayName: string): Member => ({
-  memberId: MemberId.make(id),
-  username: id,
-  displayName,
-  role: "member",
-  createdAt: "2026-01-01T00:00:00.000Z",
-  removedAt: null,
-});
-const members = new Map([member("ada", "Ada"), member("bob", "Bob")].map((m) => [m.memberId, m]));
-const ada = MemberId.make("ada");
 const bob = MemberId.make("bob");
 
 const comment = (id: string, createdAt: string): OrchestrationThreadComment => ({
@@ -36,15 +24,6 @@ const comment = (id: string, createdAt: string): OrchestrationThreadComment => (
   authorId: bob,
   text: `comment ${id}`,
   createdAt,
-});
-
-describe("teamMemberName", () => {
-  it("names the viewer, teammates, and unknown members", () => {
-    expect(teamMemberName(members, ada, ada)).toBe("You");
-    expect(teamMemberName(members, bob, ada)).toBe("Bob");
-    expect(teamMemberName(members, MemberId.make("gone"), ada)).toBe("A former member");
-    expect(teamMemberName(members, null, ada)).toBe("Someone");
-  });
 });
 
 describe("teamActivityLine", () => {

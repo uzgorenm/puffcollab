@@ -131,7 +131,7 @@ export function buildThreadActionMenuItems(
       },
       {
         id: "visibility:shared",
-        label: "Shared with project members",
+        label: "Shared with the team hub",
         checked: collaboration.visibility === "shared",
       },
     ],

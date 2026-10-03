@@ -58,7 +58,7 @@ export function useHubLinkedProjectsKey(environmentId: EnvironmentId | null): st
   );
 }
 
-export function useIsHubLinked(environmentId: EnvironmentId | null): boolean {
+function useIsHubLinked(environmentId: EnvironmentId | null): boolean {
   return isHubLinked(useHubStatus(environmentId));
 }
 

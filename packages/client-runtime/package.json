@@ -211,10 +211,6 @@
       "types": "./src/state/shell.ts",
       "default": "./src/state/shell.ts"
     },
-    "./state/members": {
-      "types": "./src/state/members.ts",
-      "default": "./src/state/members.ts"
-    },
     "./state/thread-ownership": {
       "types": "./src/state/threadOwnership.ts",
       "default": "./src/state/threadOwnership.ts"

@@ -10,7 +10,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { UsersRoundIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
 import {
@@ -18,7 +18,8 @@ import {
   useCooperationInboxForThread,
   useCooperationThreadState,
 } from "../../state/cooperation";
-import { useEnvironmentMembers } from "../../state/members";
+import { useThreadShell } from "../../state/entities";
+import { useThreadCollaboration } from "../../state/threadCollaboration";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -28,7 +29,7 @@ import { Switch } from "../ui/switch";
 /**
  * Puff Collab cooperation for one thread: the latest analysis summary, the
  * viewer's awareness notes for it, and (for the owner) the consent settings.
- * Hidden in single-person environments, where there is nobody to cooperate with.
+ * Hidden off the team hub, where there is nobody to cooperate with.
  */
 export function CooperationControl({
   environmentId,
@@ -37,8 +38,11 @@ export function CooperationControl({
   environmentId: EnvironmentId;
   threadId: ThreadId;
 }) {
-  const { members } = useEnvironmentMembers(environmentId);
-  if (members.size <= 1) return null;
+  const shell = useThreadShell(
+    useMemo(() => scopeThreadRef(environmentId, threadId), [environmentId, threadId]),
+  );
+  const collaboration = useThreadCollaboration(environmentId, shell);
+  if (!collaboration.teamEnabled) return null;
   return <CooperationPopover environmentId={environmentId} threadId={threadId} />;
 }
 

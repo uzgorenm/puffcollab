@@ -55,7 +55,6 @@ import {
   ThreadUnarchivedPayload,
   ThreadVisibilitySetPayload,
 } from "./orchestration.ts";
-import { PROJECT_INVITATION_PENDING_LIMIT, ProjectInvitationState } from "./projectInvitations.ts";
 import { RelatedThreadRelationship } from "./relatedWork.ts";
 import {
   ProjectBriefVersion,
@@ -377,12 +376,17 @@ export const HubProjectLinkResponse = Schema.Struct({
 });
 export type HubProjectLinkResponse = typeof HubProjectLinkResponse.Type;
 
-/** Same states and meaning as local project invitations (projectInvitations.ts). */
-export const HubInvitationState = ProjectInvitationState;
+export const HubInvitationState = Schema.Literals([
+  "pending",
+  "accepted",
+  "declined",
+  "cancelled",
+  "expired",
+]);
 export type HubInvitationState = typeof HubInvitationState.Type;
 
-/** Same cap as local invitations, per inviter. */
-export const HUB_INVITATION_PENDING_LIMIT = PROJECT_INVITATION_PENDING_LIMIT;
+/** Pending invitations one inviter may have outstanding at a time. */
+export const HUB_INVITATION_PENDING_LIMIT = 20;
 /** A pending invitation expires after this many days. */
 export const HUB_INVITATION_TTL_DAYS = 14;
 

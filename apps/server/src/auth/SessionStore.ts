@@ -225,6 +225,17 @@ export class WebSocketSessionRevokedError extends Schema.TaggedError<WebSocketSe
   }
 }
 
+/**
+ * Sessions minted for shared-host team members before Stage 7.4 carried
+ * `member:<id>` subjects. Each server is single-user now: every session is the
+ * environment owner's, and those legacy member sessions no longer verify.
+ */
+const RETIRED_MEMBER_SUBJECT_PREFIX = "member:";
+
+/** Whether a session subject is the environment owner's (every non-retired subject). */
+export const isEnvironmentOwnerSubject = (subject: string): boolean =>
+  !subject.startsWith(RETIRED_MEMBER_SUBJECT_PREFIX);
+
 export const SessionCredentialInvalidError = Schema.Union([
   MalformedSessionTokenError,
   InvalidSessionTokenSignatureError,
@@ -820,7 +831,7 @@ export const make = Effect.gen(function* () {
             (cause) => new SessionCredentialVerificationError({ sessionId: claims.sid, cause }),
           ),
         );
-      if (Option.isNone(row)) {
+      if (Option.isNone(row) || !isEnvironmentOwnerSubject(row.value.subject)) {
         return yield* new UnknownSessionTokenError({ sessionId: claims.sid });
       }
       if (row.value.revokedAt !== null) {
@@ -922,7 +933,7 @@ export const make = Effect.gen(function* () {
           (cause) => new WebSocketTokenVerificationError({ sessionId: claims.sid, cause }),
         ),
       );
-    if (Option.isNone(row)) {
+    if (Option.isNone(row) || !isEnvironmentOwnerSubject(row.value.subject)) {
       return yield* new UnknownWebSocketSessionError({ sessionId: claims.sid });
     }
     if (row.value.expiresAt.epochMilliseconds <= observedAt.epochMilliseconds) {

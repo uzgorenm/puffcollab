@@ -1,24 +1,25 @@
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 import { LockIcon, UsersIcon } from "lucide-react";
 
-import { useEnvironmentMembers } from "../../state/members";
+import { useHubProjectLink } from "../../state/hub";
 import { useThreadVisibilityDraftStore } from "../../threadVisibilityDraftStore";
 import { Button } from "../ui/button";
 
 /**
- * Explicit opt-in to share a new thread with project members (Puff Collab).
- * Hidden in single-user environments.
+ * Explicit opt-in to share a new thread with teammates on the team hub (Puff
+ * Collab). Hidden for projects that are not linked to the hub.
  */
 export function NewThreadVisibilityToggle(props: {
   environmentId: EnvironmentId;
+  projectId: ProjectId | null;
   threadKey: string;
 }) {
-  const { members } = useEnvironmentMembers(props.environmentId);
+  const hubLink = useHubProjectLink(props.environmentId, props.projectId);
   const visibility = useThreadVisibilityDraftStore(
     (state) => state.byThreadKey[props.threadKey] ?? "private",
   );
   const setVisibility = useThreadVisibilityDraftStore((state) => state.setVisibility);
-  if (members.size <= 1) return null;
+  if (hubLink === null) return null;
   const shared = visibility === "shared";
   return (
     <div className="flex justify-end px-1 pt-1.5">
@@ -28,13 +29,13 @@ export function NewThreadVisibilityToggle(props: {
         aria-pressed={shared}
         title={
           shared
-            ? "Project members can follow this thread and comment. Only you can instruct the agent."
-            : "Only you (and admins) can see this thread."
+            ? "Syncs to the team hub: teammates can follow and comment. Only you instruct the agent."
+            : "Stays on this computer."
         }
         onClick={() => setVisibility(props.threadKey, shared ? "private" : "shared")}
       >
         {shared ? <UsersIcon /> : <LockIcon />}
-        {shared ? "Shared with project" : "Private"}
+        {shared ? "Shared with team" : "Private"}
       </Button>
     </div>
   );

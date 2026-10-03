@@ -4,7 +4,6 @@ import {
   EnvironmentHttpApi,
   EnvironmentHttpCommonError,
   type OrchestrationReadModel,
-  OWNER_MEMBER_ID,
   ProjectId,
   type ClientOrchestrationCommand,
 } from "@t3tools/contracts";
@@ -31,7 +30,6 @@ import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSn
 import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
-import * as TeamAccess from "../team/TeamAccess.ts";
 import * as ThreadAccess from "../team/ThreadAccess.ts";
 import {
   clearPersistedServerRuntimeState,
@@ -202,10 +200,7 @@ const projectCommandUuid = Crypto.Crypto.pipe(
 
 const ProjectCliRuntimeLive = Layer.mergeAll(
   WorkspacePaths.layer,
-  Layer.mergeAll(
-    OrchestrationLayerLive,
-    ThreadAccess.layer.pipe(Layer.provideMerge(TeamAccess.layer)),
-  ).pipe(
+  Layer.mergeAll(OrchestrationLayerLive, ThreadAccess.layer).pipe(
     Layer.provideMerge(RepositoryIdentityResolver.layer),
     Layer.provideMerge(SqlitePersistenceLayerLive),
   ),
@@ -431,14 +426,11 @@ const runProjectMutation = Effect.fn("runProjectMutation")(function* (
       const threadAccess = yield* ThreadAccess.ThreadAccess;
       const output = yield* run({
         snapshot,
-        // The CLI acts as the environment owner, like the live path's session,
-        // and passes the same access rules a client command does.
+        // The CLI passes the same access rules a client command does.
         dispatch: (command) =>
           threadAccess
-            .authorizeCommand(OWNER_MEMBER_ID, command)
-            .pipe(
-              Effect.andThen(orchestrationEngine.dispatch(command, { actor: OWNER_MEMBER_ID })),
-            ),
+            .authorizeCommand(command)
+            .pipe(Effect.andThen(orchestrationEngine.dispatch(command))),
         mode: "offline",
       });
       yield* Console.log(output);

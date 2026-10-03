@@ -1,5 +1,4 @@
 import type {
-  MemberId,
   OrchestrationClientOrigin,
   OrchestrationEvent,
   OrchestrationReadModel,
@@ -58,7 +57,6 @@ const isOrchestrationCommandIdConflictError = Schema.is(OrchestrationCommandIdCo
 interface CommandEnvelope {
   command: OrchestrationCommand;
   origin: OrchestrationClientOrigin | undefined;
-  actor: MemberId | undefined;
   result: Deferred.Deferred<{ sequence: number }, OrchestrationDispatchError>;
   startedAtMs: number;
 }
@@ -263,20 +261,15 @@ const makeOrchestrationEngine = Effect.gen(function* () {
           ),
         );
         const plannedEvents = Array.isArray(eventBase) ? eventBase : [eventBase];
-        // Stamp the dispatching client's origin and acting member onto every
-        // event the command produced. The decider stays pure; attribution is an
-        // engine concern.
-        const { origin, actor } = envelope;
+        // Stamp the dispatching client's origin onto every event the command
+        // produced. The decider stays pure; attribution is an engine concern.
+        const { origin } = envelope;
         const eventBases =
-          origin === undefined && actor === undefined
+          origin === undefined
             ? plannedEvents
             : plannedEvents.map((planned) => ({
                 ...planned,
-                metadata: {
-                  ...planned.metadata,
-                  ...(origin !== undefined ? { origin } : {}),
-                  ...(actor !== undefined ? { actor } : {}),
-                },
+                metadata: { ...planned.metadata, origin },
               }));
         const committedCommand = yield* sql
           .withTransaction(
@@ -449,7 +442,6 @@ const makeOrchestrationEngine = Effect.gen(function* () {
       yield* Queue.offer(commandQueue, {
         command,
         origin: options?.origin,
-        actor: options?.actor,
         result,
         startedAtMs: yield* Clock.currentTimeMillis,
       });

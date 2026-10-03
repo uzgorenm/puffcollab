@@ -36,28 +36,6 @@ import {
   CooperationThreadState,
 } from "./cooperation.ts";
 import {
-  Member,
-  MemberCredentialResult,
-  MemberIdInput,
-  MembersAddInput,
-  MembersListResult,
-  MembersRevokeAccessResult,
-  ProjectMemberInput,
-  ProjectMembersInput,
-  ProjectMembersResult,
-  TeamMembersError,
-} from "./members.ts";
-import {
-  ProjectInvitationIdInput,
-  ProjectInvitationInviteInput,
-  ProjectInvitationInviteResult,
-  ProjectInvitation,
-  ProjectInvitationsError,
-  ProjectInvitationsListInput,
-  ProjectInvitationsListResult,
-  ProjectLeaveInput,
-} from "./projectInvitations.ts";
-import {
   RelatedWorkError,
   RelatedWorkSuggestInput,
   RelatedWorkSuggestResult,
@@ -359,21 +337,6 @@ export const WS_METHODS = {
   projectsEnsureScratch: "projects.ensureScratch",
   projectsCreateNew: "projects.createNew",
 
-  // Team members (Puff Collab)
-  membersList: "members.list",
-  membersAdd: "members.add",
-  membersRemove: "members.remove",
-  membersIssueCredential: "members.issueCredential",
-  membersRevokeAccess: "members.revokeAccess",
-  projectMembersList: "projectMembers.list",
-  projectMembersRemove: "projectMembers.remove",
-  projectMembersLeave: "projectMembers.leave",
-  projectInvitationsInvite: "projectInvitations.invite",
-  projectInvitationsList: "projectInvitations.list",
-  projectInvitationsAccept: "projectInvitations.accept",
-  projectInvitationsDecline: "projectInvitations.decline",
-  projectInvitationsCancel: "projectInvitations.cancel",
-
   // Cooperation analysis (Puff Collab)
   cooperationSubscribeThread: "cooperation.subscribeThread",
   cooperationUpdateSettings: "cooperation.updateSettings",
@@ -541,7 +504,6 @@ export const WS_METHODS = {
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
   subscribeDeviceState: "subscribeDeviceState",
   subscribeServerConfig: "subscribeServerConfig",
-  subscribeProjectInvitations: "subscribeProjectInvitations",
   hubSubscribeStatus: "hub.subscribeStatus",
   hubConfigure: "hub.configure",
   hubLinkStart: "hub.linkStart",
@@ -1114,39 +1076,6 @@ const WsProjectsCreateNewRpc = Rpc.make(WS_METHODS.projectsCreateNew, {
   error: Schema.Union([OrchestrationDispatchCommandError, EnvironmentAuthorizationError]),
 });
 
-const TeamMembersRpcError = Schema.Union([TeamMembersError, EnvironmentAuthorizationError]);
-
-const WsMembersListRpc = Rpc.make(WS_METHODS.membersList, {
-  payload: Schema.Struct({}),
-  success: MembersListResult,
-  error: TeamMembersRpcError,
-});
-
-const WsMembersAddRpc = Rpc.make(WS_METHODS.membersAdd, {
-  payload: MembersAddInput,
-  success: Member,
-  error: TeamMembersRpcError,
-});
-
-// Removing a member also revokes their sessions and unredeemed credentials.
-const WsMembersRemoveRpc = Rpc.make(WS_METHODS.membersRemove, {
-  payload: MemberIdInput,
-  success: Member,
-  error: TeamMembersRpcError,
-});
-
-const WsMembersIssueCredentialRpc = Rpc.make(WS_METHODS.membersIssueCredential, {
-  payload: MemberIdInput,
-  success: MemberCredentialResult,
-  error: TeamMembersRpcError,
-});
-
-const WsMembersRevokeAccessRpc = Rpc.make(WS_METHODS.membersRevokeAccess, {
-  payload: MemberIdInput,
-  success: MembersRevokeAccessResult,
-  error: TeamMembersRpcError,
-});
-
 // Possibly related shared threads for a draft, filtered to what the caller can see.
 const WsRelatedWorkSuggestRpc = Rpc.make(WS_METHODS.relatedWorkSuggest, {
   payload: RelatedWorkSuggestInput,
@@ -1154,62 +1083,6 @@ const WsRelatedWorkSuggestRpc = Rpc.make(WS_METHODS.relatedWorkSuggest, {
   error: Schema.Union([RelatedWorkError, EnvironmentAuthorizationError]),
 });
 
-const WsProjectMembersListRpc = Rpc.make(WS_METHODS.projectMembersList, {
-  payload: ProjectMembersInput,
-  success: ProjectMembersResult,
-  error: TeamMembersRpcError,
-});
-
-const ProjectInvitationsRpcError = Schema.Union([
-  ProjectInvitationsError,
-  EnvironmentAuthorizationError,
-]);
-
-// The project's creator and admins remove members; a member removes themselves with leave.
-const WsProjectMembersRemoveRpc = Rpc.make(WS_METHODS.projectMembersRemove, {
-  payload: ProjectMemberInput,
-  success: ProjectMembersResult,
-  error: ProjectInvitationsRpcError,
-});
-
-const WsProjectMembersLeaveRpc = Rpc.make(WS_METHODS.projectMembersLeave, {
-  payload: ProjectLeaveInput,
-  success: ProjectMembersResult,
-  error: ProjectInvitationsRpcError,
-});
-
-// Any project member invites a teammate or a new person; nobody joins until they accept.
-const WsProjectInvitationsInviteRpc = Rpc.make(WS_METHODS.projectInvitationsInvite, {
-  payload: ProjectInvitationInviteInput,
-  success: ProjectInvitationInviteResult,
-  error: ProjectInvitationsRpcError,
-});
-
-const WsProjectInvitationsListRpc = Rpc.make(WS_METHODS.projectInvitationsList, {
-  payload: ProjectInvitationsListInput,
-  success: ProjectInvitationsListResult,
-  error: ProjectInvitationsRpcError,
-});
-
-const WsProjectInvitationsAcceptRpc = Rpc.make(WS_METHODS.projectInvitationsAccept, {
-  payload: ProjectInvitationIdInput,
-  success: ProjectInvitation,
-  error: ProjectInvitationsRpcError,
-});
-
-const WsProjectInvitationsDeclineRpc = Rpc.make(WS_METHODS.projectInvitationsDecline, {
-  payload: ProjectInvitationIdInput,
-  success: ProjectInvitation,
-  error: ProjectInvitationsRpcError,
-});
-
-const WsProjectInvitationsCancelRpc = Rpc.make(WS_METHODS.projectInvitationsCancel, {
-  payload: ProjectInvitationIdInput,
-  success: ProjectInvitation,
-  error: ProjectInvitationsRpcError,
-});
-
-// The caller's pending invitations now and after every change to them.
 const HubLocalRpcError = Schema.Union([HubLocalError, EnvironmentAuthorizationError]);
 const WsHubSubscribeStatusRpc = Rpc.make(WS_METHODS.hubSubscribeStatus, {
   payload: Schema.Struct({}),
@@ -1295,13 +1168,6 @@ const WsHubSetFocusRpc = Rpc.make(WS_METHODS.hubSetFocus, {
   payload: HubFocusSetInput,
   success: Schema.Void,
   error: HubLocalRpcError,
-});
-
-const WsSubscribeProjectInvitationsRpc = Rpc.make(WS_METHODS.subscribeProjectInvitations, {
-  payload: Schema.Struct({}),
-  success: ProjectInvitationsListResult,
-  error: ProjectInvitationsRpcError,
-  stream: true,
 });
 
 const CooperationRpcError = Schema.Union([CooperationError, EnvironmentAuthorizationError]);
@@ -1859,20 +1725,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsSearchEntriesRpc,
   WsProjectsEnsureScratchRpc,
   WsProjectsCreateNewRpc,
-  WsMembersListRpc,
-  WsMembersAddRpc,
-  WsMembersRemoveRpc,
-  WsMembersIssueCredentialRpc,
-  WsMembersRevokeAccessRpc,
-  WsProjectMembersListRpc,
-  WsProjectMembersRemoveRpc,
-  WsProjectMembersLeaveRpc,
-  WsProjectInvitationsInviteRpc,
-  WsProjectInvitationsListRpc,
-  WsProjectInvitationsAcceptRpc,
-  WsProjectInvitationsDeclineRpc,
-  WsProjectInvitationsCancelRpc,
-  WsSubscribeProjectInvitationsRpc,
   WsHubSubscribeStatusRpc,
   WsHubConfigureRpc,
   WsHubLinkStartRpc,

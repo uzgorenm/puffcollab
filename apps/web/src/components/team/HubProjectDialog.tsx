@@ -40,7 +40,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 /** Shown where hub features need this computer linked first. */
-export function HubNotLinkedNotice({ onNavigate }: { onNavigate?: () => void }) {
+function HubNotLinkedNotice({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex flex-col items-start gap-2 text-sm">
       <p className="text-muted-foreground">

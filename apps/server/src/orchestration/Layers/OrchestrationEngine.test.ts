@@ -9,7 +9,6 @@ import {
   CheckpointRef,
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
-  MemberId,
   MessageId,
   ProjectId,
   ThreadId,
@@ -2128,141 +2127,44 @@ describe("OrchestrationEngine", () => {
 
     await system.dispose();
   });
-  it("stamps the acting member onto every event and records thread and message creators", async () => {
-    const createdAt = now();
-    const system = await createOrchestrationSystem();
-    const { engine } = system;
-    const actor = MemberId.make("member-ada");
-    const projectId = asProjectId("project-actor");
-    const threadId = ThreadId.make("thread-actor");
-
-    await system.run(
-      engine.dispatch(
-        {
-          type: "project.create",
-          commandId: CommandId.make("cmd-actor-project-create"),
-          projectId,
-          title: "Actor Project",
-          workspaceRoot: "/tmp/project-actor",
-          defaultModelSelection: {
-            instanceId: ProviderInstanceId.make("codex"),
-            model: "gpt-5-codex",
-          },
-          createdAt,
-        },
-        { actor },
-      ),
-    );
-    await system.run(
-      engine.dispatch(
-        {
-          type: "thread.create",
-          commandId: CommandId.make("cmd-actor-thread-create"),
-          threadId,
-          projectId,
-          title: "Actor thread",
-          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          branch: null,
-          worktreePath: null,
-          createdAt,
-        },
-        { actor },
-      ),
-    );
-    await system.run(
-      engine.dispatch(
-        {
-          type: "thread.turn.start",
-          commandId: CommandId.make("cmd-actor-turn-start"),
-          threadId,
-          message: {
-            messageId: asMessageId("msg-actor-1"),
-            role: "user",
-            text: "hello from ada",
-            attachments: [],
-          },
-          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-          runtimeMode: "full-access",
-          createdAt,
-        },
-        { actor },
-      ),
-    );
-    // Server-originated commands carry no actor.
-    await system.run(
-      engine.dispatch({
-        type: "thread.meta.update",
-        commandId: CommandId.make("cmd-actorless-meta"),
-        threadId,
-        title: "Renamed by the server",
-      }),
-    );
-
-    const events = await system.run(
-      Stream.runCollect(engine.readEvents(0)).pipe(Effect.map((chunk) => Array.from(chunk))),
-    );
-    const memberEvents = events.filter((event) => event.commandId?.startsWith("cmd-actor-"));
-    expect(memberEvents.length).toBeGreaterThanOrEqual(3);
-    expect(memberEvents.every((event) => event.metadata.actor === actor)).toBe(true);
-    expect(
-      events.find((event) => event.commandId === "cmd-actorless-meta")?.metadata.actor,
-    ).toBeUndefined();
-
-    const readModel = await system.readModel();
-    const thread = readModel.threads.find((entry) => entry.id === threadId);
-    expect(thread?.createdBy).toBe(actor);
-    expect(thread?.messages.find((message) => message.role === "user")?.createdBy).toBe(actor);
-
-    await system.dispose();
-  });
-
   it("persists owner-only related-thread links across a restart", async () => {
     const createdAt = now();
     const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-related-links-"));
     const databasePath = NodePath.join(directory, "state.sqlite");
     let system = await createOrchestrationSystem(databasePath);
-    const ada = MemberId.make("member-ada");
     const projectId = asProjectId("project-related");
     const threadId = ThreadId.make("thread-related-new");
     const relatedThreadId = ThreadId.make("thread-related-old");
     try {
       await system.run(
-        system.engine.dispatch(
-          {
-            type: "project.create",
-            commandId: CommandId.make("cmd-related-project"),
-            projectId,
-            title: "Related",
-            workspaceRoot: "/tmp/project-related",
-            defaultModelSelection: null,
-            createdAt,
-          },
-          { actor: ada },
-        ),
+        system.engine.dispatch({
+          type: "project.create",
+          commandId: CommandId.make("cmd-related-project"),
+          projectId,
+          title: "Related",
+          workspaceRoot: "/tmp/project-related",
+          defaultModelSelection: null,
+          createdAt,
+        }),
       );
       for (const id of [relatedThreadId, threadId]) {
         await system.run(
-          system.engine.dispatch(
-            {
-              type: "thread.create",
-              commandId: CommandId.make(`cmd-create-${id}`),
-              threadId: id,
-              projectId,
-              title: `Title of ${id}`,
-              modelSelection: {
-                instanceId: ProviderInstanceId.make("codex"),
-                model: "gpt-5-codex",
-              },
-              runtimeMode: "full-access",
-              interactionMode: "default",
-              branch: null,
-              worktreePath: null,
-              createdAt,
+          system.engine.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make(`cmd-create-${id}`),
+            threadId: id,
+            projectId,
+            title: `Title of ${id}`,
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
             },
-            { actor: ada },
-          ),
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            createdAt,
+          }),
         );
       }
       const link = {
@@ -2272,7 +2174,7 @@ describe("OrchestrationEngine", () => {
         relatedThreadId,
         relationship: "alternative",
       } as const;
-      await system.run(system.engine.dispatch(link, { actor: ada }));
+      await system.run(system.engine.dispatch(link));
 
       const detail = await system.readThread(threadId);
       const linkedThread = Option.getOrUndefined(detail);
@@ -2289,15 +2191,12 @@ describe("OrchestrationEngine", () => {
       await system.dispose();
       system = await createOrchestrationSystem(databasePath);
       await system.run(
-        system.engine.dispatch(
-          {
-            type: "thread.related-thread.unlink",
-            commandId: CommandId.make("cmd-related-unlink"),
-            threadId,
-            relatedThreadId,
-          },
-          { actor: ada },
-        ),
+        system.engine.dispatch({
+          type: "thread.related-thread.unlink",
+          commandId: CommandId.make("cmd-related-unlink"),
+          threadId,
+          relatedThreadId,
+        }),
       );
       const afterUnlink = Option.getOrUndefined(await system.readThread(threadId));
       expect(afterUnlink?.relatedThreads).toBeUndefined();

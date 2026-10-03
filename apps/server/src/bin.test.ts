@@ -19,7 +19,6 @@ import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as Stream from "effect/Stream";
 import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
@@ -42,7 +41,6 @@ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSna
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
-import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
@@ -144,19 +142,6 @@ const readPersistedSnapshot = (baseDir: string) =>
     return yield* Effect.gen(function* () {
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       return yield* projectionSnapshotQuery.getSnapshot();
-    }).pipe(Effect.provide(makeProjectPersistenceLayer(config)));
-  });
-
-const readPersistedEventActors = (baseDir: string) =>
-  Effect.gen(function* () {
-    const config = yield* makeCliTestServerConfig(baseDir);
-    return yield* Effect.gen(function* () {
-      const engine = yield* OrchestrationEngine.OrchestrationEngineService;
-      const events = yield* Stream.runCollect(engine.readEvents(0));
-      return Array.from(events, (event): [string, string | undefined] => [
-        event.type,
-        event.metadata?.actor,
-      ]);
     }).pipe(Effect.provide(makeProjectPersistenceLayer(config)));
   });
 
@@ -402,14 +387,10 @@ const withLiveProjectCliServer = <A, E, R>(baseDir: string, run: () => Effect.Ef
       Layer.provideMerge(
         ThreadAccess.layer.pipe(
           Layer.provideMerge(
-            TeamAccess.layer.pipe(
-              Layer.provideMerge(
-                EnvironmentAuth.layer.pipe(
-                  Layer.provideMerge(SqlitePersistenceLayerLive),
-                  Layer.provide(ServerEnvironment.identityLayer),
-                  Layer.provide(ServerSecretStore.layer),
-                ),
-              ),
+            EnvironmentAuth.layer.pipe(
+              Layer.provideMerge(SqlitePersistenceLayerLive),
+              Layer.provide(ServerEnvironment.identityLayer),
+              Layer.provide(ServerSecretStore.layer),
             ),
           ),
         ),
@@ -772,12 +753,6 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
         (project) => project.id === addedProject?.id,
       );
       assert.isTrue((removedProject?.deletedAt ?? null) !== null);
-      // The CLI acts as the environment owner.
-      assert.deepEqual(yield* readPersistedEventActors(baseDir), [
-        ["project.created", "owner"],
-        ["project.meta-updated", "owner"],
-        ["project.deleted", "owner"],
-      ]);
     }),
   );
 

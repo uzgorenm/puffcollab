@@ -89,14 +89,14 @@ export function ThreadTeamRouteScreen(props: ThreadTeamRouteProps) {
                     <TeamRow
                       icon="lock"
                       title="Private"
-                      detail="Only you and admins can see this thread."
+                      detail="Stays on this computer."
                       checked={collaboration.visibility === "private"}
                       onPress={() => changeVisibility("private")}
                     />
                     <TeamRow
                       divided
                       icon="person.2"
-                      title="Shared with project members"
+                      title="Shared with the team hub"
                       detail="Teammates can follow and comment. Only you instruct the agent."
                       checked={collaboration.visibility === "shared"}
                       onPress={() => changeVisibility("shared")}

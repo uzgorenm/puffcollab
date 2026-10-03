@@ -525,21 +525,6 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             updatedAt: event.payload.updatedAt,
             deletedAt: null,
           });
-          // The creating member joins the project (admins see every project anyway).
-          if (event.metadata.actor !== undefined) {
-            yield* sql`
-              INSERT OR IGNORE INTO team_project_members (project_id, member_id, added_at)
-              VALUES (${event.payload.projectId}, ${event.metadata.actor}, ${event.payload.createdAt})
-            `.pipe(
-              Effect.andThen(sql`
-                INSERT OR IGNORE INTO team_project_creators (project_id, member_id)
-                VALUES (${event.payload.projectId}, ${event.metadata.actor})
-              `),
-              Effect.mapError(
-                toPersistenceSqlError("ProjectionPipeline.projects:creatorMembership"),
-              ),
-            );
-          }
           return;
 
         case "project.meta-updated": {

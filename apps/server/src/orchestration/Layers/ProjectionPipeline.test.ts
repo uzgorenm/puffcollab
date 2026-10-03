@@ -5,7 +5,7 @@ import {
   CorrelationId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   EventId,
-  MemberId,
+  OWNER_MEMBER_ID,
   MessageId,
   ProjectId,
   ThreadCommentId,
@@ -4446,7 +4446,6 @@ it.layer(Layer.fresh(makeEngineTestLayer("t3-projection-shared-threads-")))(
         const createdAt = "2026-01-01T00:00:00.000Z";
         const projectId = ProjectId.make("project-shared-threads");
         const threadId = ThreadId.make("thread-shared-threads");
-        const bob = MemberId.make("bob");
 
         yield* engine.dispatch({
           type: "project.create",
@@ -4456,34 +4455,28 @@ it.layer(Layer.fresh(makeEngineTestLayer("t3-projection-shared-threads-")))(
           workspaceRoot: "/tmp/project-shared-threads",
           createdAt,
         });
-        yield* engine.dispatch(
-          {
-            type: "thread.create",
-            commandId: CommandId.make("cmd-shared-thread"),
-            threadId,
-            projectId,
-            title: "Shared thread",
-            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
-            runtimeMode: "full-access",
-            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-            branch: null,
-            worktreePath: null,
-            createdAt,
-            visibility: "shared",
-          },
-          { actor: MemberId.make("ada") },
-        );
-        yield* engine.dispatch(
-          {
-            type: "thread.comment.add",
-            commandId: CommandId.make("cmd-shared-comment"),
-            threadId,
-            commentId: ThreadCommentId.make("comment-shared"),
-            text: "Following along",
-            createdAt,
-          },
-          { actor: bob },
-        );
+        yield* engine.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("cmd-shared-thread"),
+          threadId,
+          projectId,
+          title: "Shared thread",
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+          runtimeMode: "full-access",
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          branch: null,
+          worktreePath: null,
+          createdAt,
+          visibility: "shared",
+        });
+        yield* engine.dispatch({
+          type: "thread.comment.add",
+          commandId: CommandId.make("cmd-shared-comment"),
+          threadId,
+          commentId: ThreadCommentId.make("comment-shared"),
+          text: "Following along",
+          createdAt,
+        });
 
         const shell = yield* snapshots.getThreadShellById(threadId);
         assert.equal(Option.getOrThrow(shell).visibility, "shared");
@@ -4491,7 +4484,7 @@ it.layer(Layer.fresh(makeEngineTestLayer("t3-projection-shared-threads-")))(
         assert.deepEqual(detail.thread.comments, [
           {
             id: ThreadCommentId.make("comment-shared"),
-            authorId: bob,
+            authorId: OWNER_MEMBER_ID,
             text: "Following along",
             createdAt,
           },

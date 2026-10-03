@@ -114,6 +114,23 @@ const failingSessionLookupCredentialLayer = Layer.effect(
 );
 
 it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
+  it.effect("no longer verifies retired shared-host member sessions", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      const owner = yield* sessions.issue({ subject: "owner-device" });
+      expect((yield* sessions.verify(owner.token)).subject).toBe("owner-device");
+      const member = yield* sessions.issue({ subject: "member:ada" });
+      expect((yield* Effect.flip(sessions.verify(member.token)))._tag).toBe(
+        "UnknownSessionTokenError",
+      );
+      const ticket = yield* sessions.issueWebSocketToken(member.sessionId);
+      expect((yield* Effect.flip(sessions.verifyWebSocketToken(ticket.token)))._tag).toBe(
+        "UnknownWebSocketSessionError",
+      );
+      expect(SessionStore.isEnvironmentOwnerSubject("member:ada")).toBe(false);
+    }).pipe(Effect.provide(makeSessionStoreLayer())),
+  );
+
   it.effect("keys remote cookies by environment identity instead of state directory", () =>
     Effect.gen(function* () {
       const cookieName = (stateDir: string, environmentId: EnvironmentId) =>

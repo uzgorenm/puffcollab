@@ -24,7 +24,6 @@ import { Alert, Linking, View } from "react-native";
 
 import { AppText as Text, AppTextInput } from "../../components/AppText";
 import { hubEnvironment, useHubInvitationGroups, useHubStatus, useHubTeam } from "../../state/hub";
-import { useEnvironmentMembers } from "../../state/members";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsSection } from "../settings/components/SettingsSection";
 import { TeamPillButton } from "./TeamPillButton";
@@ -39,7 +38,6 @@ function openVerificationUrl(url: string) {
 function PendingLinkCode(props: {
   readonly environmentId: EnvironmentId;
   readonly pendingLink: HubPendingLink;
-  readonly disabled: boolean;
 }) {
   const linkCancel = useAtomCommand(hubEnvironment.linkCancel, "Cancel linking");
   return (
@@ -56,7 +54,6 @@ function PendingLinkCode(props: {
       <View className="flex-row justify-end gap-2">
         <TeamPillButton
           label="Cancel"
-          disabled={props.disabled}
           onPress={() => void linkCancel({ environmentId: props.environmentId, input: {} })}
         />
         <TeamPillButton
@@ -72,7 +69,6 @@ function PendingLinkCode(props: {
 function HubUrlEditor(props: {
   readonly environmentId: EnvironmentId;
   readonly status: HubLocalStatus;
-  readonly disabled: boolean;
 }) {
   const configure = useAtomCommand(hubEnvironment.configure, "Save hub address");
   const [draft, setDraft] = useState<string | null>(null);
@@ -116,20 +112,14 @@ function HubUrlEditor(props: {
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="url"
-        editable={!props.disabled}
+        editable
         returnKeyType="done"
         onChangeText={setDraft}
         onSubmitEditing={requestSave}
       />
       {changed ? (
         <View className="flex-row justify-end">
-          <TeamPillButton
-            label="Save"
-            tone="primary"
-            disabled={props.disabled}
-            loading={busy}
-            onPress={requestSave}
-          />
+          <TeamPillButton label="Save" tone="primary" loading={busy} onPress={requestSave} />
         </View>
       ) : null}
     </TeamCardBody>
@@ -139,17 +129,14 @@ function HubUrlEditor(props: {
 /**
  * The team hub for one environment's server (Stage 7): status, the linked
  * account, the hub address, and the link flow. Linking is host-wide, so only
- * the environment's admins change it.
+ * the environment owner changes it.
  */
 export function TeamHubSettingsSection(props: { readonly environmentId: EnvironmentId }) {
   const status = useHubStatus(props.environmentId);
-  const { members, currentMemberId } = useEnvironmentMembers(props.environmentId);
   const linkStart = useAtomCommand(hubEnvironment.linkStart, "Link this computer");
   const unlink = useAtomCommand(hubEnvironment.unlink, "Unlink from team hub");
   const [starting, setStarting] = useState(false);
   if (status === null) return null;
-  const viewer = currentMemberId === null ? undefined : members.get(currentMemberId);
-  const readOnly = viewer !== undefined && viewer.role !== "admin";
   const summary = hubStatusSummary(status);
   const linked = isHubLinked(status);
   const account = status.account;
@@ -181,11 +168,6 @@ export function TeamHubSettingsSection(props: { readonly environmentId: Environm
         title={summary.label}
         detail={summary.detail}
       />
-      {readOnly ? (
-        <TeamCardBody divided>
-          <TeamMutedText>Only admins can change the team hub on this environment.</TeamMutedText>
-        </TeamCardBody>
-      ) : null}
       {linked && account !== null ? (
         <TeamRow
           divided
@@ -200,17 +182,13 @@ export function TeamHubSettingsSection(props: { readonly environmentId: Environm
                   accessibilityIgnoresInvertColors
                 />
               ) : null}
-              <TeamPillButton label="Unlink" disabled={readOnly} onPress={requestUnlink} />
+              <TeamPillButton label="Unlink" onPress={requestUnlink} />
             </View>
           }
         />
       ) : null}
       {!linked && status.pendingLink !== null ? (
-        <PendingLinkCode
-          environmentId={props.environmentId}
-          pendingLink={status.pendingLink}
-          disabled={readOnly}
-        />
+        <PendingLinkCode environmentId={props.environmentId} pendingLink={status.pendingLink} />
       ) : null}
       {!linked && status.pendingLink === null && status.hubUrl !== null ? (
         <TeamCardBody divided>
@@ -218,14 +196,14 @@ export function TeamHubSettingsSection(props: { readonly environmentId: Environm
             <TeamPillButton
               label="Link this computer"
               tone="primary"
-              disabled={readOnly}
+
               loading={starting}
               onPress={() => void startLink()}
             />
           </View>
         </TeamCardBody>
       ) : null}
-      <HubUrlEditor environmentId={props.environmentId} status={status} disabled={readOnly} />
+      <HubUrlEditor environmentId={props.environmentId} status={status} />
     </SettingsSection>
   );
 }

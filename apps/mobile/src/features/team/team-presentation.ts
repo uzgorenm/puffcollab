@@ -7,8 +7,6 @@ import {
 import type {
   HubLocalActivityItem,
   HubLocalTeam,
-  Member,
-  MemberId,
   OrchestrationThreadComment,
   RelatedThreadRelationship,
 } from "@t3tools/contracts";
@@ -19,19 +17,6 @@ import * as Cause from "effect/Cause";
  * labels, comment placement in the thread feed, and which thread-row actions a
  * follower keeps.
  */
-
-type Members = ReadonlyMap<MemberId, Member>;
-
-/** "You", a teammate's name, or a neutral stand-in when the member is unknown. */
-export function teamMemberName(
-  members: Members,
-  memberId: MemberId | null,
-  currentMemberId: MemberId | null,
-): string {
-  if (memberId === null) return "Someone";
-  if (memberId === currentMemberId) return "You";
-  return members.get(memberId)?.displayName ?? "A former member";
-}
 
 /** "Ada started a thread", or "Agent finished a turn" for provider activity. */
 export function teamActivityLine(

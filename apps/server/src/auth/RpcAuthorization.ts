@@ -1,7 +1,6 @@
 import {
   type DeviceListInput,
   AuthAccessReadScope,
-  AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthRelayReadScope,
@@ -118,24 +117,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.projectsWriteFile]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectsEnsureScratch]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectsCreateNew]: AuthOrchestrationOperateScope,
-  // Everyone reads the roster (author names); only admins change it.
-  [WS_METHODS.membersList]: AuthOrchestrationReadScope,
-  [WS_METHODS.membersAdd]: AuthAccessWriteScope,
-  [WS_METHODS.membersRemove]: AuthAccessWriteScope,
-  [WS_METHODS.membersIssueCredential]: AuthAccessWriteScope,
-  [WS_METHODS.membersRevokeAccess]: AuthAccessWriteScope,
-  [WS_METHODS.projectMembersList]: AuthOrchestrationReadScope,
   [WS_METHODS.relatedWorkSuggest]: AuthOrchestrationReadScope,
-  // Ordinary members invite people to, leave, and manage their own projects;
-  // the ProjectInvitations service checks membership, creator, and admin rules.
-  [WS_METHODS.projectMembersRemove]: AuthOrchestrationOperateScope,
-  [WS_METHODS.projectMembersLeave]: AuthOrchestrationOperateScope,
-  [WS_METHODS.projectInvitationsInvite]: AuthOrchestrationOperateScope,
-  [WS_METHODS.projectInvitationsList]: AuthOrchestrationReadScope,
-  [WS_METHODS.projectInvitationsAccept]: AuthOrchestrationOperateScope,
-  [WS_METHODS.projectInvitationsDecline]: AuthOrchestrationOperateScope,
-  [WS_METHODS.projectInvitationsCancel]: AuthOrchestrationOperateScope,
-  [WS_METHODS.subscribeProjectInvitations]: AuthOrchestrationReadScope,
   // Team hub (Stage 7): the local server forwards these to the hub.
   [WS_METHODS.hubSubscribeStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.hubConfigure]: AuthOrchestrationOperateScope,
@@ -221,9 +203,10 @@ export const RPC_REQUIRED_SCOPES = {
 
 /**
  * RPCs that change the whole host rather than a project or thread: environment
- * settings, provider logins and installs, keybindings, and server updates. Team
- * members need the admin role for these on top of the scope above; reads and
- * status streams stay open so every member's settings UI still renders.
+ * settings, provider logins and installs, keybindings, server updates, and the
+ * team hub link. They need the environment owner's session on top of the scope
+ * above. Every paired session is the owner's (each server is single-user); the
+ * check keeps any other subject out of host-wide changes.
  */
 export const ADMIN_ONLY_RPC_METHODS: ReadonlySet<string> = new Set<WsRpcMethod>([
   WS_METHODS.serverUpdateSettings,

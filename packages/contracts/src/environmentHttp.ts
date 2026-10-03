@@ -78,11 +78,9 @@ export type EnvironmentAuthInvalidReason = typeof EnvironmentAuthInvalidReason.T
 
 export const EnvironmentOperationForbiddenReason = Schema.Literals([
   "current_session_revoke_not_allowed",
-  // Puff Collab: the member may not issue this command (not the thread's
-  // owner, not a project member, or the thread is not visible to them).
+  // Puff Collab: the command targets a teammate's read-only hub mirror, or a
+  // hub comment this server did not write.
   "thread_access_denied",
-  // Puff Collab: the member is not in the project a workspace request names.
-  "project_access_denied",
 ]);
 export type EnvironmentOperationForbiddenReason = typeof EnvironmentOperationForbiddenReason.Type;
 

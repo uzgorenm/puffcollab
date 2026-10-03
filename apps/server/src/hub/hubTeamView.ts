@@ -27,7 +27,7 @@ const memberOrder = (creatorId: HubAccountId) => (left: HubTeamMember, right: Hu
   Number(right.role === "admin") - Number(left.role === "admin") ||
   left.joinedAt.localeCompare(right.joinedAt);
 
-export const hubTeamMembersOf = (
+const hubTeamMembersOf = (
   state: HubProjectState,
   accounts: ReadonlyMap<string, HubAccount>,
 ): ReadonlyArray<HubTeamMember> =>
@@ -55,7 +55,7 @@ const STATUS_ORDER: Readonly<Record<TeamWorkCardStatus, number>> = {
 };
 
 /** Work cards from the hub's thread summaries and analyses, most urgent first. */
-export const hubWorkCardsOf = (
+const hubWorkCardsOf = (
   state: HubProjectState,
   localThreadIdOf: (hubThreadId: HubThreadId) => ThreadId,
 ): ReadonlyArray<HubLocalWorkCard> => {
@@ -81,7 +81,7 @@ export const hubWorkCardsOf = (
     );
 };
 
-export const hubLocalActivityOf = (
+const hubLocalActivityOf = (
   state: HubProjectState,
   localThreadIdOf: (hubThreadId: HubThreadId) => ThreadId,
 ): ReadonlyArray<HubLocalActivityItem> =>
