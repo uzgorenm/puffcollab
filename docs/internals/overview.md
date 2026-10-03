@@ -76,7 +76,8 @@ the ordinary engine (`thread.hub-mirror.apply` in [HubSync](../../apps/server/sr
 so shells, thread streams, resume and search need no second code path. The price is that mirrors
 look like local threads to everything that reads projections: events applied from the hub carry
 `metadata.hubOrigin`, every reactor that does work must skip them, background sweeps must drop
-`isRemoteHubThread` threads, and `ThreadAccess` rejects every command on a mirror except comments.
+`isRemoteHubThread` threads, and `ThreadAccess` rejects every command on a mirror except comments
+and the viewer's own organization (pin, snooze), which are never published.
 A new reactor or sweep that forgets this will run provider, git or checkpoint work for someone
 else's thread. Publishing is the reverse: only shared threads in hub-linked projects are read into
 the outbound queue, and nothing with `hubOrigin` is published back.
