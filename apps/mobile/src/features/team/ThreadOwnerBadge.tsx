@@ -4,9 +4,16 @@ import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
 import type { ThreadCollaborationView } from "../../state/thread-collaboration";
 
+const SYNC_SYMBOLS = {
+  synced: "cloud",
+  pending: "arrow.up.circle",
+  offline: "wifi.slash",
+} as const;
+
 /**
  * Thread-list marker for team threads (Puff Collab): the owner's name on a
- * teammate's thread, a people glyph on your own shared thread.
+ * teammate's thread, a people glyph on your own shared thread, or its team hub sync state.
+ * Remote team hub threads count as teammates' threads.
  */
 export function ThreadOwnerBadge(props: {
   readonly collaboration: ThreadCollaborationView;
@@ -27,6 +34,20 @@ export function ThreadOwnerBadge(props: {
     );
   }
   if (!collaboration.shared) return null;
+  // Team hub: your own shared thread shows its sync state, quietly and static.
+  const sync = collaboration.hubSync;
+  if (sync !== null) {
+    return (
+      <View accessible accessibilityLabel={sync.label}>
+        <SymbolView
+          name={SYNC_SYMBOLS[sync.state]}
+          size={12}
+          tintColorClassName={props.iconTintClassName}
+          type="monochrome"
+        />
+      </View>
+    );
+  }
   return (
     <View accessible accessibilityLabel="Shared with project">
       <SymbolView
