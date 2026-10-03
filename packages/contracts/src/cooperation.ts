@@ -3,7 +3,6 @@ import * as Schema from "effect/Schema";
 import {
   EventId,
   IsoDateTime,
-  MemberId,
   NonNegativeInt,
   ThreadId,
   TrimmedNonEmptyString,

@@ -1,4 +1,7 @@
-import { canDeleteThreadComment } from "@t3tools/client-runtime/state/thread-ownership";
+import {
+  canDeleteThreadComment,
+  threadCommentAuthorName,
+} from "@t3tools/client-runtime/state/thread-ownership";
 import type { EnvironmentId, OrchestrationThreadComment, ThreadId } from "@t3tools/contracts";
 import { memo, useCallback } from "react";
 import { Alert, Pressable, View } from "react-native";
@@ -6,26 +9,24 @@ import { Alert, Pressable, View } from "react-native";
 import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
 import { relativeTime } from "../../lib/time";
-import { useEnvironmentMembers } from "../../state/members";
+import { useHubStatus } from "../../state/hub";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { teamMemberName } from "./team-presentation";
 
 /**
  * A teammate's comment in the thread feed (Puff Collab). Set apart from the
- * conversation because the agent never sees it. Authors delete their own;
- * admins may delete any.
+ * conversation because the agent never sees it. Authors delete their own.
  */
 export const ThreadCommentRow = memo(function ThreadCommentRow(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly comment: OrchestrationThreadComment;
 }) {
-  const roster = useEnvironmentMembers(props.environmentId);
+  const viewerHubAccountId = useHubStatus(props.environmentId)?.account?.accountId ?? null;
   const deleteComment = useAtomCommand(threadEnvironment.deleteComment, "Delete comment");
   const { comment } = props;
-  const author = teamMemberName(roster.members, comment.authorId, roster.currentMemberId);
-  const canDelete = canDeleteThreadComment({ comment, ...roster });
+  const author = threadCommentAuthorName({ comment, viewerHubAccountId });
+  const canDelete = canDeleteThreadComment({ comment, viewerHubAccountId });
   const confirmDelete = useCallback(() => {
     Alert.alert("Delete comment?", "Everyone following the thread will stop seeing it.", [
       { text: "Cancel", style: "cancel" },

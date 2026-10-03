@@ -31,6 +31,7 @@ import {
   type RepositoryIdentity,
   ThreadCommentId,
   ThreadId,
+  TurnId,
 } from "@t3tools/contracts";
 import type * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
@@ -325,6 +326,14 @@ const makeFakeHub = (options: { readonly range?: HubProtocolRange } = {}) =>
                       focus: message.focus,
                       updatedAt: NOW,
                     },
+            });
+          case "comment.delete":
+            yield* push({ type: "ack", requestId: message.requestId });
+            return yield* push({
+              type: "comment.deleted",
+              projectId: HUB_PROJECT,
+              threadId: message.threadId,
+              commentId: message.commentId,
             });
           case "analysis.post":
             return yield* push({ type: "ack", requestId: message.requestId });
@@ -1434,6 +1443,109 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
               citations: [expect.objectContaining({ threadId: mirrorId })],
             }),
           ]);
+        }),
+      );
+    }).pipe(Effect.provide(baseLayer)),
+  );
+
+  it.effect("serves mirrored diffs, organizes mirrors locally, and deletes own hub comments", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakeHub();
+      seedTeammateThread(fake);
+      fake.threads.get(REMOTE_HUB_THREAD)!.events.push({
+        seq: 3,
+        occurredAt: NOW,
+        body: {
+          type: "thread.turn-diff",
+          payload: {
+            threadId: ThreadId.make("t-remote"),
+            turnId: TurnId.make("turn-1"),
+            checkpointTurnCount: 1,
+            diff: "diff --git a/parser.ts b/parser.ts\n",
+          },
+        },
+      });
+      yield* withHub(fake, (hub) =>
+        Effect.gen(function* () {
+          yield* linkEnvironment(hub, fake);
+          yield* setupProjects(hub);
+          yield* fake.waitFor(isAckFor(REMOTE_HUB_THREAD, 3));
+          const mirrorId = mirrorThreadIdOf(REMOTE_HUB_THREAD);
+
+          const turn = yield* hub.mirrorDiff({
+            threadId: mirrorId,
+            fromTurnCount: 0,
+            toTurnCount: 1,
+          });
+          expect(Option.getOrThrow(turn)).toContain("parser.ts");
+          const local = yield* hub.mirrorDiff({
+            threadId: ThreadId.make("t-local"),
+            fromTurnCount: 0,
+            toTurnCount: 1,
+          });
+          expect(Option.isNone(local)).toBe(true);
+
+          // Pinning a mirror only changes this server's view; settling stays the owner's.
+          const access = yield* ThreadAccess.ThreadAccess;
+          yield* access.authorizeCommand(OWNER_MEMBER_ID, {
+            type: "thread.pin",
+            commandId: nextCommandId(),
+            threadId: mirrorId,
+          });
+          const settle = yield* Effect.flip(
+            access.authorizeCommand(OWNER_MEMBER_ID, {
+              type: "thread.settle",
+              commandId: nextCommandId(),
+              threadId: mirrorId,
+              createdAt: NOW,
+            } as never),
+          );
+          expect(settle).toMatchObject({ reason: "remote-hub-thread" });
+
+          // After a mirror rebuild our comment comes back as a hub comment.
+          const projected = yield* waitForEvent(
+            (event) =>
+              event.type === "thread.comment-added" && event.payload.commentId === "c-bobs",
+          );
+          for (const [commentId, authorId] of [
+            ["c-mine", ME.accountId],
+            ["c-bobs", BOB.accountId],
+          ] as const) {
+            yield* fake.push({
+              type: "comment.added",
+              projectId: HUB_PROJECT,
+              comment: {
+                commentId: ThreadCommentId.make(commentId),
+                threadId: REMOTE_HUB_THREAD,
+                authorId,
+                text: "A comment",
+                createdAt: NOW,
+              },
+            });
+          }
+          yield* Fiber.join(projected);
+          const bobs = yield* Effect.flip(
+            access.authorizeCommand(OWNER_MEMBER_ID, {
+              type: "thread.comment.delete",
+              commandId: nextCommandId(),
+              threadId: mirrorId,
+              commentId: ThreadCommentId.make("c-bobs"),
+            }),
+          );
+          expect(bobs).toMatchObject({ reason: "not-comment-author" });
+          const deleteMine = {
+            type: "thread.comment.delete" as const,
+            commandId: nextCommandId(),
+            threadId: mirrorId,
+            commentId: ThreadCommentId.make("c-mine"),
+          };
+          yield* access.authorizeCommand(OWNER_MEMBER_ID, deleteMine);
+          yield* dispatch(deleteMine);
+          const sent = yield* fake.waitFor(
+            (message): message is Extract<HubClientMessage, { type: "comment.delete" }> =>
+              message.type === "comment.delete",
+          );
+          expect(sent).toMatchObject({ threadId: REMOTE_HUB_THREAD, commentId: "c-mine" });
         }),
       );
     }).pipe(Effect.provide(baseLayer)),

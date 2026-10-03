@@ -1,10 +1,12 @@
-import { canDeleteThreadComment } from "@t3tools/client-runtime/state/thread-ownership";
-import type { OrchestrationThreadComment, ScopedThreadRef } from "@t3tools/contracts";
+import {
+  canDeleteThreadComment,
+  threadCommentAuthorName,
+} from "@t3tools/client-runtime/state/thread-ownership";
+import type { HubAccountId, OrchestrationThreadComment, ScopedThreadRef } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { MessageCircleIcon, Trash2Icon } from "lucide-react";
 
 import { useThreadCollaborationActions } from "../../hooks/useThreadCollaborationActions";
-import type { EnvironmentMembers } from "../../state/members";
 import { formatShortTimestamp } from "../../timestampFormat";
 import { Button } from "../ui/button";
 
@@ -14,17 +16,14 @@ import { Button } from "../ui/button";
  */
 export function ThreadCommentTimelineRow(props: {
   comment: OrchestrationThreadComment;
-  members: EnvironmentMembers;
+  viewerHubAccountId: HubAccountId | null;
   threadRef: ScopedThreadRef | null;
   timestampFormat: TimestampFormat;
 }) {
-  const { comment, members, threadRef } = props;
+  const { comment, viewerHubAccountId, threadRef } = props;
   const { deleteThreadComment } = useThreadCollaborationActions();
-  const isMine = comment.authorId === members.currentMemberId;
-  const author = isMine
-    ? "You"
-    : (members.members.get(comment.authorId)?.displayName ?? "A teammate");
-  const canDelete = threadRef !== null && canDeleteThreadComment({ comment, ...members });
+  const author = threadCommentAuthorName({ comment, viewerHubAccountId });
+  const canDelete = threadRef !== null && canDeleteThreadComment({ comment, viewerHubAccountId });
   return (
     <div className="group/comment flex justify-center">
       <div className="flex w-full max-w-[85%] items-start gap-2 rounded-xl border border-dashed border-border px-3 py-2">

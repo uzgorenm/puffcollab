@@ -47,14 +47,18 @@ describe("buildThreadActionMenuItems", () => {
     expect(linked.find((item) => item.id === "team-hub")?.label).toBe("Team hub link");
   });
 
-  it("keeps a remote hub thread's follower to read-only items with no housekeeping", () => {
-    const remote = ids({
+  it("leaves a teammate's mirror only items that change the viewer's own view", () => {
+    const state = {
       ...baseState,
-      collaboration: { isOwner: false, isAdmin: false, teamEnabled: true, visibility: "shared" },
-    });
-    for (const id of ["pin", "settle", "snooze", "rename", "visibility", "archive", "delete"]) {
+      collaboration: { remote: true, teamEnabled: true, visibility: "shared" as const },
+    };
+    const remote = ids(state);
+    for (const id of ["settle", "rename", "visibility", "archive", "delete", "auto-settle"]) {
       expect(remote).not.toContain(id);
     }
+    expect(remote).toEqual(expect.arrayContaining(["pin", "snooze", "mark-unread", "copy"]));
+    const copy = buildThreadActionMenuItems(state).find((item) => item.id === "copy");
+    expect(copy?.children?.map((child) => child.id)).toEqual(["copy-thread-id"]);
   });
 
   it("hides lifecycle items when the environment lacks the capabilities", () => {
@@ -202,8 +206,7 @@ describe("buildThreadActionMenuItems", () => {
 
   describe("shared threads", () => {
     const collaboration = {
-      isOwner: true,
-      isAdmin: false,
+      remote: false,
       teamEnabled: true,
       visibility: "private" as const,
     };
@@ -218,26 +221,6 @@ describe("buildThreadActionMenuItems", () => {
       expect(
         ids({ ...baseState, collaboration: { ...collaboration, teamEnabled: false } }),
       ).not.toContain("visibility");
-    });
-
-    it("leaves followers only read-only items, plus archive and delete for admins", () => {
-      const follower = { ...collaboration, isOwner: false };
-      expect(ids({ ...baseState, collaboration: follower })).toEqual([
-        "mark-unread",
-        "copy",
-        "project-settings",
-        "team-overview",
-        "invite-people",
-      ]);
-      expect(ids({ ...baseState, collaboration: { ...follower, isAdmin: true } })).toEqual([
-        "mark-unread",
-        "copy",
-        "project-settings",
-        "team-overview",
-        "invite-people",
-        "archive",
-        "delete",
-      ]);
     });
   });
 });

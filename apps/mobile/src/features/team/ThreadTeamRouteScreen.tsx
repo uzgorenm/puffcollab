@@ -10,7 +10,6 @@ import { ScreenScrollView } from "../../components/ScreenScrollView";
 import { useCooperationInboxForThread } from "../../state/cooperation";
 import { useThreadShell } from "../../state/entities";
 import { useHubLinkedProjectsKey } from "../../state/hub";
-import { useEnvironmentMembers } from "../../state/members";
 import { threadCollaborationView } from "../../state/thread-collaboration";
 import { threadEnvironment, useEnvironmentThread } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -42,21 +41,14 @@ export function ThreadTeamRouteScreen(props: ThreadTeamRouteProps) {
   );
   // Shares the thread screen's subscription; this route sits on top of it.
   const detail = Option.getOrNull(useEnvironmentThread(environmentId, threadId).data);
-  const roster = useEnvironmentMembers(environmentId);
   const hubProjectsKey = useHubLinkedProjectsKey(environmentId);
   const collaboration = useMemo(
     () =>
       threadCollaborationView(
-        {
-          createdBy: shell?.createdBy,
-          visibility: shell?.visibility,
-          hub: shell?.hub,
-          projectId: shell?.projectId,
-        },
-        roster,
+        { visibility: shell?.visibility, hub: shell?.hub, projectId: shell?.projectId },
         hubProjectsKey,
       ),
-    [roster, hubProjectsKey, shell?.createdBy, shell?.visibility, shell?.hub, shell?.projectId],
+    [hubProjectsKey, shell?.visibility, shell?.hub, shell?.projectId],
   );
   const inboxItems = useCooperationInboxForThread(
     collaboration.isOwner && collaboration.teamEnabled ? environmentId : null,

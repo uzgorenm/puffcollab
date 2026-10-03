@@ -10,6 +10,7 @@ import {
 } from "./ThreadGitControls";
 
 type NativeHeaderItems = ReadonlyArray<Record<string, unknown>>;
+const NO_ITEMS: NativeHeaderItems = [];
 
 export interface ThreadTeamHeaderControl {
   /** The owner has awareness notes or proposals waiting for this thread. */
@@ -24,13 +25,21 @@ export function useThreadHeaderOptions(props: {
   readonly usesNativeHeaderGlass: boolean;
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
   readonly onReturnToThread?: () => void;
-  /** Puff Collab: opens the thread's team details. Absent in single-user environments. */
+  /** Puff Collab: opens the thread's team details. Absent off the team hub. */
   readonly teamControl?: ThreadTeamHeaderControl | null;
+  /**
+   * False on a teammate's hub mirror: git, terminal and scripts act on a
+   * checkout that lives on its owner's machine.
+   */
+  readonly localWorkspaceAvailable?: boolean;
 }) {
   const navigation = useNavigation();
   const { layout, panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
-  const gitRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
-  const gitCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
+  const localWorkspace = props.localWorkspaceAvailable !== false;
+  const allGitRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
+  const allGitCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
+  const gitRightHeaderItems = localWorkspace ? allGitRightHeaderItems : NO_ITEMS;
+  const gitCenterHeaderItems = localWorkspace ? allGitCenterHeaderItems : NO_ITEMS;
   const teamControl = props.teamControl ?? null;
   const teamHeaderItems = useMemo<NativeHeaderItems>(
     () =>

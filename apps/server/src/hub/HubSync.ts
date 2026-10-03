@@ -227,11 +227,17 @@ export class HubSync extends Context.Service<
     }) => Effect.Effect<void, HubLocalError>;
     /** Awareness the hub delivered for this account's threads, now and after every change. */
     readonly incomingAwareness: Stream.Stream<ReadonlyArray<HubAwarenessItem>>;
-    /** The full patch of a teammate's turn, when the hub delivered one. */
-    readonly getRemoteTurnDiff: (
-      threadId: ThreadId,
-      checkpointTurnCount: number,
-    ) => Effect.Effect<string | null>;
+    /**
+     * A mirror's patch across turns `fromTurnCount`..`toTurnCount` from the
+     * per-turn patches the hub delivered (concatenated across several turns,
+     * since the checkpoints live on the owner's machine). None for a thread
+     * that is not a teammate's mirror.
+     */
+    readonly mirrorDiff: (input: {
+      readonly threadId: ThreadId;
+      readonly fromTurnCount: number;
+      readonly toTurnCount: number;
+    }) => Effect.Effect<Option.Option<string>>;
     /** Resolves once the publisher has processed everything queued so far (tests). */
     readonly drain: Effect.Effect<void>;
   }
@@ -2499,8 +2505,17 @@ const make = Effect.gen(function* () {
     updateBrief,
     setFocus,
     leaveProject,
-    getRemoteTurnDiff: (threadId, checkpointTurnCount) =>
-      store.getRemoteDiff(threadId, checkpointTurnCount).pipe(Effect.orElseSucceed(() => null)),
+    mirrorDiff: (input) =>
+      Effect.gen(function* () {
+        if (hubThreadIdOfMirror(input.threadId) === null) return Option.none();
+        const patches: Array<string> = [];
+        for (let turn = input.fromTurnCount + 1; turn <= input.toTurnCount; turn += 1) {
+          const patch = yield* store.getRemoteDiff(input.threadId, turn);
+          if (patch !== null && patch.length > 0)
+            patches.push(patch.endsWith("\n") ? patch : `${patch}\n`);
+        }
+        return Option.some(patches.join(""));
+      }).pipe(Effect.orElseSucceed(() => Option.some(""))),
     drain: publisher.drain,
   });
 });

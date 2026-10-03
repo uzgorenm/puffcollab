@@ -79,6 +79,20 @@ export const filterSnapshotForViewer = <
         threads: snapshot.threads.filter((thread) => canViewerSeeThread(viewer, thread)),
       };
 
+/**
+ * Organizing a teammate's mirror only changes this server's view of it (it is
+ * never published), so pinning and snoozing work there like on any thread.
+ * Archive and settle stay with the owner: they are the owner's state, synced
+ * from their machine.
+ */
+const MIRROR_LOCAL_COMMANDS: ReadonlySet<OrchestrationCommand["type"]> = new Set([
+  "thread.pin",
+  "thread.unpin",
+  "thread.pin.reorder",
+  "thread.snooze",
+  "thread.unsnooze",
+]);
+
 /** Commands an admin may run on threads they do not own. */
 const ADMIN_THREAD_COMMANDS: ReadonlySet<OrchestrationCommand["type"]> = new Set([
   "thread.session.stop",
@@ -214,6 +228,14 @@ const make = Effect.gen(function* () {
       persistence("ThreadAccess.findThread"),
     );
 
+  /** This server's hub account, as hub comments record their author (`hub:<accountId>`). */
+  const hubAccountId = sql<{ readonly accountId: string | null }>`
+    SELECT json_extract(account_json, '$.accountId') AS "accountId" FROM hub_link WHERE id = 1
+  `.pipe(
+    Effect.map((rows) => rows[0]?.accountId ?? null),
+    persistence("ThreadAccess.hubAccount"),
+  );
+
   const viewer: ThreadAccess["Service"]["viewer"] = (memberId) =>
     teamAccess.projectVisibility(memberId).pipe(Effect.map((projects) => ({ memberId, projects })));
 
@@ -288,7 +310,9 @@ const make = Effect.gen(function* () {
         const thread = yield* findThread(command.threadId);
         if (thread !== undefined && isRemoteHubThread(thread)) {
           yield* requireVisible(memberId, command.threadId, command);
-          if (command.type === "thread.comment.add") return;
+          if (command.type === "thread.comment.add" || MIRROR_LOCAL_COMMANDS.has(command.type)) {
+            return;
+          }
           if (command.type !== "thread.comment.delete") {
             return yield* deny(command, "remote-hub-thread");
           }
@@ -330,8 +354,14 @@ const make = Effect.gen(function* () {
           `.pipe(persistence("ThreadAccess.commentAuthor"));
           const authorId = authors[0]?.authorId;
           if (authorId === undefined || authorId === memberId) return;
-          // A teammate's hub comment: only its author can delete it, on the hub.
-          if (authorId.startsWith("hub:")) return yield* deny(command, "not-comment-author");
+          // A hub comment: only its author deletes it. This server's own hub
+          // comments (back from the hub after a mirror rebuild) route to the
+          // hub by comment id; a teammate's stay theirs.
+          if (authorId.startsWith("hub:")) {
+            return authorId === `hub:${yield* hubAccountId}`
+              ? undefined
+              : yield* deny(command, "not-comment-author");
+          }
           return (yield* teamAccess.isAdmin(memberId))
             ? undefined
             : yield* deny(command, "not-comment-author");

@@ -2014,6 +2014,9 @@ export default function ChatView(props: ChatViewProps) {
     isServerThread && activeThreadRef !== null && !threadCollaboration.isOwner
       ? activeThreadRef
       : null;
+  // A teammate's hub mirror has no checkout here: git, worktrees, terminals,
+  // files, previews, devices and pull requests belong to its owner's machine.
+  const localWorkspaceAvailable = !threadCollaboration.remote;
   const [timelineAnchor, setTimelineAnchor] = useState<{
     readonly threadKey: string | null;
     readonly messageId: MessageId | null;
@@ -9501,7 +9504,7 @@ export default function ChatView(props: ChatViewProps) {
 
   const panelToggleControls = (
     <PanelLayoutControls
-      terminalAvailable={activeProject !== null}
+      terminalAvailable={localWorkspaceAvailable && activeProject !== null}
       terminalOpen={terminalUiState.terminalOpen}
       terminalShortcutLabel={shortcutLabelForCommand(keybindings, "terminal.toggle")}
       rightPanelAvailable={activeProject !== null}
@@ -9776,6 +9779,7 @@ export default function ChatView(props: ChatViewProps) {
             {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
             isServerThread={isServerThread}
+            localWorkspaceAvailable={localWorkspaceAvailable}
             activeProject={activeProject}
             openInCwd={gitCwd}
             activeProjectScripts={activeProjectScripts}
@@ -10338,14 +10342,14 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequests={addPullRequestsSurface}
           onAddAgents={addAgentsSurface}
           onAddDevice={addDeviceSurface}
-          browserAvailable={isPreviewSupportedInRuntime()}
-          terminalAvailable={activeProject !== null}
-          diffAvailable={isServerThread && isGitRepo}
-          filesAvailable={activeProject !== null}
-          pullRequestAvailable={pullRequestSurfaceAvailable}
-          pullRequestsAvailable={pullRequestsSurfaceAvailable}
+          browserAvailable={localWorkspaceAvailable && isPreviewSupportedInRuntime()}
+          terminalAvailable={localWorkspaceAvailable && activeProject !== null}
+          diffAvailable={isServerThread && (isGitRepo || threadCollaboration.remote)}
+          filesAvailable={localWorkspaceAvailable && activeProject !== null}
+          pullRequestAvailable={localWorkspaceAvailable && pullRequestSurfaceAvailable}
+          pullRequestsAvailable={localWorkspaceAvailable && pullRequestsSurfaceAvailable}
           agentsAvailable
-          deviceAvailable={activeThreadRef !== null}
+          deviceAvailable={localWorkspaceAvailable && activeThreadRef !== null}
           liveAgentCount={agentPanelModel.liveCount}
         >
           {rightPanelContent}
@@ -10395,14 +10399,14 @@ export default function ChatView(props: ChatViewProps) {
             onAddPullRequests={addPullRequestsSurface}
             onAddAgents={addAgentsSurface}
             onAddDevice={addDeviceSurface}
-            browserAvailable={isPreviewSupportedInRuntime()}
-            terminalAvailable={activeProject !== null}
-            diffAvailable={isServerThread && isGitRepo}
-            filesAvailable={activeProject !== null}
-            pullRequestAvailable={pullRequestSurfaceAvailable}
-            pullRequestsAvailable={pullRequestsSurfaceAvailable}
+            browserAvailable={localWorkspaceAvailable && isPreviewSupportedInRuntime()}
+            terminalAvailable={localWorkspaceAvailable && activeProject !== null}
+            diffAvailable={isServerThread && (isGitRepo || threadCollaboration.remote)}
+            filesAvailable={localWorkspaceAvailable && activeProject !== null}
+            pullRequestAvailable={localWorkspaceAvailable && pullRequestSurfaceAvailable}
+            pullRequestsAvailable={localWorkspaceAvailable && pullRequestsSurfaceAvailable}
             agentsAvailable
-            deviceAvailable={activeThreadRef !== null}
+            deviceAvailable={localWorkspaceAvailable && activeThreadRef !== null}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}

@@ -16,6 +16,7 @@ import {
   COMPOSER_CONTEXT_KINDS,
   type AssistantCitation,
   type EnvironmentId,
+  type HubAccountId,
   type MessageId,
   type ScopedThreadRef,
   type ServerProviderSkill,
@@ -39,7 +40,6 @@ import type {
   RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
-import { memberAuthorLabel } from "@t3tools/client-runtime/state/members";
 import {
   emptyAgentPanelModel,
   formatSubagentModelLabel,
@@ -160,7 +160,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useFileContextMenuHandler } from "../../fileContextMenu";
 import { useProject, useThread } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
-import { type EnvironmentMembers, useEnvironmentMembers } from "../../state/members";
+import { useHubStatus } from "../../state/hub";
 import { ThreadCommentTimelineRow } from "../collab/ThreadCommentTimelineRow";
 import {
   CHAT_TIMELINE_ANCHOR_OFFSET,
@@ -282,7 +282,8 @@ interface TimelineRowSharedState {
   workspaceRoot: string | undefined;
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   activeThreadEnvironmentId: EnvironmentId;
-  members: EnvironmentMembers;
+  /** This server's team hub account, to tell the viewer's hub comments apart. */
+  viewerHubAccountId: HubAccountId | null;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
   onUseArtifactTemplate: (template: CodexArtifactTemplate) => void;
   onRunShellCommand: ((command: string) => void) | undefined;
@@ -1149,7 +1150,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [timelineViewportElement, rows.length, reportContentOverflow, chatWidth]);
 
-  const members = useEnvironmentMembers(activeThreadEnvironmentId);
+  const viewerHubAccountId = useHubStatus(activeThreadEnvironmentId)?.account?.accountId ?? null;
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       citationRequest: readyCitationRequest,
@@ -1163,7 +1164,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       workspaceRoot,
       skills,
       activeThreadEnvironmentId,
-      members,
+      viewerHubAccountId,
       onRevertToTurnCount,
       onUseArtifactTemplate,
       onRunShellCommand,
@@ -1200,7 +1201,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       workspaceRoot,
       skills,
       activeThreadEnvironmentId,
-      members,
+      viewerHubAccountId,
       onRevertToTurnCount,
       onUseArtifactTemplate,
       onRunShellCommand,
@@ -1967,7 +1968,7 @@ function CommentTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thread
   return (
     <ThreadCommentTimelineRow
       comment={row.comment}
-      members={ctx.members}
+      viewerHubAccountId={ctx.viewerHubAccountId}
       threadRef={ctx.threadRef}
       timestampFormat={ctx.timestampFormat}
     />
@@ -2134,22 +2135,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     ],
   );
 
-  // Another teammate's message names its author; the viewer's own stays unlabeled.
-  const authorLabel = memberAuthorLabel(
-    ctx.members.members,
-    row.message.createdBy,
-    ctx.members.currentMemberId,
-  );
-
   return (
     <div className="group flex flex-col items-end gap-1">
-      {authorLabel !== null ? (
-        <p aria-hidden className="max-w-[80%] truncate pe-1 text-muted-foreground text-xs">
-          {authorLabel}
-        </p>
-      ) : null}
       <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
-        <MessageAuthorHeading>{authorLabel ?? "You"}</MessageAuthorHeading>
+        <MessageAuthorHeading>You</MessageAuthorHeading>
         {(regularImages.length > 0 || userVideos.length > 0) && (
           <div className="mb-2 grid max-w-[210px] grid-cols-2 gap-2">
             {regularImages.map((image) => (

@@ -62,6 +62,11 @@ interface ChatHeaderProps {
   activeThreadTitle: string;
   /** Drafts have no server thread yet, so the title carries no action menu. */
   isServerThread: boolean;
+  /**
+   * False on a teammate's hub mirror: scripts, open-in-editor and git act on
+   * a checkout that lives on its owner's machine, and its title is theirs.
+   */
+  localWorkspaceAvailable?: boolean;
   activeProject: EnvironmentProject | null;
   openInCwd: string | null;
   activeProjectScripts: ReadonlyArray<ProjectScript> | undefined;
@@ -131,6 +136,7 @@ export const ChatHeader = memo(function ChatHeader({
   draftId,
   activeThreadTitle,
   isServerThread,
+  localWorkspaceAvailable = true,
   activeProject,
   openInCwd,
   activeProjectScripts,
@@ -227,9 +233,10 @@ export const ChatHeader = memo(function ChatHeader({
   const renamingTitle = renaming?.threadId === activeThreadId ? renaming.title : null;
   const renameCommittedRef = useRef(false);
   const startRename = useCallback(() => {
+    if (!localWorkspaceAvailable) return;
     renameCommittedRef.current = false;
     setRenaming({ threadId: activeThreadId, title: activeThreadTitle });
-  }, [activeThreadId, activeThreadTitle]);
+  }, [activeThreadId, activeThreadTitle, localWorkspaceAvailable]);
   const commitRename = useCallback(
     (title: string) => {
       setRenaming(null);
@@ -353,7 +360,7 @@ export const ChatHeader = memo(function ChatHeader({
     },
     [commitRename],
   );
-  const headerActions = (
+  const headerActions = !localWorkspaceAvailable ? null : (
     <>
       {activeProjectScripts && (
         <>
@@ -515,6 +522,7 @@ export const ChatHeader = memo(function ChatHeader({
           <MenuTrigger
             className={
               actionsCollapsed &&
+              localWorkspaceAvailable &&
               (activeProjectScripts || showOpenInPicker || (activeProjectName && gitCwd))
                 ? undefined
                 : "hidden"

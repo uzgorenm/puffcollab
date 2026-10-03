@@ -151,35 +151,26 @@ interface RowMenuAction {
   readonly subactions?: ReadonlyArray<RowMenuAction>;
 }
 
-// Only a thread's owner changes its lifecycle, title, or placement.
-const OWNER_ONLY_ROW_ACTIONS = new Set([
+// A teammate's mirror runs on its owner's machine: its lifecycle, title and
+// checkout are theirs. Pin, snooze and arranging stay: they only change the
+// viewer's own list.
+const MIRROR_HIDDEN_ROW_ACTIONS = new Set([
   "settle",
   "unsettle",
-  "snooze",
-  "unsnooze",
-  "pin",
-  "unpin",
   "rename",
   "regenerate-title",
   "auto-settle",
-  "arrange",
-  "move-up",
-  "move-down",
+  "new-thread-on-branch",
+  "archive",
+  "delete",
 ]);
 
-/**
- * The thread-row menu a viewer may use. Owners keep everything; followers keep
- * read-only items, and admins may still archive or delete (matching web).
- */
+/** The thread-row menu a viewer may use: everything on their own threads, less on a mirror. */
 export function threadRowMenuActionsForViewer<A extends RowMenuAction>(
   actions: ReadonlyArray<A>,
-  viewer: { readonly isOwner: boolean; readonly isAdmin: boolean },
+  viewer: { readonly remote: boolean },
 ): A[] {
-  return actions.filter((action) => {
-    if (viewer.isOwner) return true;
-    const id = action.id ?? "";
-    if (OWNER_ONLY_ROW_ACTIONS.has(id) || id.startsWith("snooze:")) return false;
-    if (id === "archive" || id === "delete") return viewer.isAdmin;
-    return true;
-  });
+  return actions.filter(
+    (action) => !viewer.remote || !MIRROR_HIDDEN_ROW_ACTIONS.has(action.id ?? ""),
+  );
 }

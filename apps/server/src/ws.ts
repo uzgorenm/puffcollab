@@ -2545,7 +2545,18 @@ const makeWsRpcLayer = (
         [ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.getTurnDiff,
-            checkpointDiffQuery.getTurnDiff(input).pipe(
+            // A teammate's mirror has no local checkpoints; its patches came from the hub.
+            hubSync.mirrorDiff(input).pipe(
+              Effect.flatMap((mirror) =>
+                Option.isSome(mirror)
+                  ? Effect.succeed({
+                      threadId: input.threadId,
+                      fromTurnCount: input.fromTurnCount,
+                      toTurnCount: input.toTurnCount,
+                      diff: mirror.value,
+                    })
+                  : checkpointDiffQuery.getTurnDiff(input),
+              ),
               Effect.mapError(
                 (cause) =>
                   new OrchestrationGetTurnDiffError({
@@ -2559,7 +2570,17 @@ const makeWsRpcLayer = (
         [ORCHESTRATION_WS_METHODS.getFullThreadDiff]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.getFullThreadDiff,
-            checkpointDiffQuery.getFullThreadDiff(input).pipe(
+            hubSync.mirrorDiff({ ...input, fromTurnCount: 0 }).pipe(
+              Effect.flatMap((mirror) =>
+                Option.isSome(mirror)
+                  ? Effect.succeed({
+                      threadId: input.threadId,
+                      fromTurnCount: 0,
+                      toTurnCount: input.toTurnCount,
+                      diff: mirror.value,
+                    })
+                  : checkpointDiffQuery.getFullThreadDiff(input),
+              ),
               Effect.mapError(
                 (cause) =>
                   new OrchestrationGetFullThreadDiffError({

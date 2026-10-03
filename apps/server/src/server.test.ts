@@ -1256,7 +1256,9 @@ const buildAppUnderTest = (options?: {
       }),
       Layer.provideMerge(
         Layer.mergeAll(
-          Layer.mock(HubSync.HubSync)({}),
+          Layer.mock(HubSync.HubSync)({
+            mirrorDiff: () => Effect.succeed(Option.none()),
+          }),
           Layer.mergeAll(RelatedWork.layer, WorkspaceAccess.layer, ProjectInvitations.layer).pipe(
             Layer.provideMerge(
               ThreadAccess.layer.pipe(

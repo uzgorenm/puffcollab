@@ -2,7 +2,6 @@ import {
   HubAccountId,
   HubThreadId,
   type HubThreadLink,
-  type Member,
   MemberId,
   OWNER_MEMBER_ID,
 } from "@t3tools/contracts";
@@ -12,118 +11,96 @@ import {
   canDeleteThreadComment,
   threadCollaboration,
   threadCollaborationView,
+  threadCommentAuthorName,
 } from "./threadOwnership.ts";
 
-const member = (id: string, displayName: string, role: Member["role"] = "member"): Member => ({
-  memberId: MemberId.make(id),
-  username: id,
-  displayName,
-  role,
-  createdAt: "2026-01-01T00:00:00.000Z",
-  removedAt: null,
-});
-const members = new Map(
-  [member("owner", "Owner", "admin"), member("ada", "Ada"), member("bob", "Bob")].map((entry) => [
-    entry.memberId,
-    entry,
-  ]),
-);
-const ada = MemberId.make("ada");
-const bob = MemberId.make("bob");
-
-describe("threadCollaboration", () => {
-  it("lets only the owner drive and names them for followers", () => {
-    const thread = { createdBy: ada, visibility: "shared" as const };
-    expect(threadCollaboration({ thread, currentMemberId: ada, members }).isOwner).toBe(true);
-    const followed = threadCollaboration({ thread, currentMemberId: bob, members });
-    expect(followed).toMatchObject({ isOwner: false, ownerName: "Ada", shared: true });
-  });
-
-  it("treats creator-less threads as the environment owner's and missing visibility as private", () => {
-    const legacy = threadCollaboration({ thread: {}, currentMemberId: bob, members });
-    expect(legacy).toMatchObject({ ownerId: OWNER_MEMBER_ID, isOwner: false, shared: false });
-    expect(legacy.visibility).toBe("private");
-    expect(threadCollaboration({ thread: {}, currentMemberId: null, members }).isOwner).toBe(true);
-  });
-
-  it("lets authors and admins delete comments", () => {
-    const comment = { authorId: bob };
-    expect(canDeleteThreadComment({ comment, currentMemberId: bob, members })).toBe(true);
-    expect(canDeleteThreadComment({ comment, currentMemberId: ada, members })).toBe(false);
-    expect(canDeleteThreadComment({ comment, currentMemberId: OWNER_MEMBER_ID, members })).toBe(
-      true,
-    );
-  });
-});
-
-const hubLink = (overrides: Partial<HubThreadLink> = {}): HubThreadLink => ({
-  threadId: HubThreadId.make("link-1:thread-1"),
+const ME = HubAccountId.make("acct-me");
+const mirror: HubThreadLink = {
+  threadId: HubThreadId.make("link-ada:t1"),
   ownerId: HubAccountId.make("acct-ada"),
   ownerLogin: "ada-l",
-  ownerDisplayName: "Ada Lovelace",
+  ownerDisplayName: "",
   remote: true,
   syncState: "synced",
-  ...overrides,
-});
+};
 
-describe("threadCollaboration with the team hub", () => {
-  it("follows a remote hub thread and names its hub owner, even for the local owner", () => {
-    const thread = { createdBy: null, hub: hubLink() };
-    for (const currentMemberId of [null, OWNER_MEMBER_ID, ada]) {
-      expect(threadCollaboration({ thread, currentMemberId, members })).toMatchObject({
-        isOwner: false,
-        ownerName: "Ada Lovelace",
-        shared: true,
-        visibility: "shared",
-        remote: true,
-        hubSync: null,
-      });
-    }
-  });
-
-  it("falls back to the GitHub login when the display name is empty", () => {
-    const thread = { hub: hubLink({ ownerDisplayName: "" }) };
-    expect(threadCollaboration({ thread, currentMemberId: null, members }).ownerName).toBe("ada-l");
-  });
-
-  it("shows sync state only on the viewer's own shared hub thread", () => {
-    const own = {
-      visibility: "shared" as const,
-      hub: hubLink({ remote: false, syncState: "pending" }),
-    };
-    expect(threadCollaboration({ thread: own, currentMemberId: null, members })).toMatchObject({
+describe("threadCollaboration", () => {
+  it("owns every local thread and follows teammates' mirrors", () => {
+    expect(threadCollaboration({ thread: { visibility: "private" } })).toMatchObject({
       isOwner: true,
       remote: false,
-      hubSync: { state: "pending" },
+      shared: false,
     });
-    const privateThread = { visibility: "private" as const, hub: hubLink({ remote: false }) };
-    expect(
-      threadCollaboration({ thread: privateThread, currentMemberId: null, members }).hubSync,
-    ).toBeNull();
-    expect(threadCollaboration({ thread: {}, currentMemberId: null, members }).hubSync).toBeNull();
+    expect(threadCollaboration({ thread: { hub: mirror } })).toMatchObject({
+      isOwner: false,
+      remote: true,
+      shared: true,
+      ownerName: "ada-l",
+      hubSync: null,
+    });
   });
 
-  it("enables team controls on hub projects and never grants admin housekeeping on mirrors", () => {
-    const solo = new Map<MemberId, Member>();
+  it("shows the sync marker only on the viewer's own shared thread", () => {
+    const own = { visibility: "shared" as const, hub: { ...mirror, remote: false } };
+    expect(threadCollaboration({ thread: own }).hubSync?.state).toBe("synced");
+    expect(threadCollaboration({ thread: { ...own, visibility: "private" } }).hubSync).toBeNull();
+    expect(threadCollaboration({ thread: {} }).hubSync).toBeNull();
+  });
+
+  it("enables team controls only on the hub", () => {
+    expect(threadCollaborationView({ thread: {} }).teamEnabled).toBe(false);
+    expect(threadCollaborationView({ thread: {}, projectOnHub: true }).teamEnabled).toBe(true);
+    expect(threadCollaborationView({ thread: { hub: mirror } }).teamEnabled).toBe(true);
+  });
+});
+
+describe("canDeleteThreadComment", () => {
+  it("deletes local comments and the viewer's own hub comments only", () => {
     expect(
-      threadCollaborationView({ thread: {}, currentMemberId: null, members: solo }).teamEnabled,
+      canDeleteThreadComment({ comment: { authorId: OWNER_MEMBER_ID }, viewerHubAccountId: null }),
+    ).toBe(true);
+    const own = { authorId: MemberId.make(`hub:${ME}`) };
+    expect(canDeleteThreadComment({ comment: own, viewerHubAccountId: ME })).toBe(true);
+    expect(canDeleteThreadComment({ comment: own, viewerHubAccountId: null })).toBe(false);
+    expect(
+      canDeleteThreadComment({
+        comment: { authorId: MemberId.make("hub:acct-ada") },
+        viewerHubAccountId: ME,
+      }),
     ).toBe(false);
+  });
+});
+
+describe("threadCommentAuthorName", () => {
+  it("names the viewer, hub teammates, and pre-hub members", () => {
+    const hubAuthor = {
+      accountId: HubAccountId.make("acct-ada"),
+      githubLogin: "ada",
+      displayName: "Ada",
+    };
     expect(
-      threadCollaborationView({
-        thread: {},
-        currentMemberId: null,
-        members: solo,
-        projectOnHub: true,
-      }).teamEnabled,
-    ).toBe(true);
-    const remote = threadCollaborationView({
-      thread: { hub: hubLink() },
-      currentMemberId: null,
-      members: solo,
-    });
-    expect(remote).toMatchObject({ teamEnabled: true, isAdmin: false, isOwner: false });
+      threadCommentAuthorName({ comment: { authorId: OWNER_MEMBER_ID }, viewerHubAccountId: null }),
+    ).toBe("You");
     expect(
-      threadCollaborationView({ thread: {}, currentMemberId: OWNER_MEMBER_ID, members }).isAdmin,
-    ).toBe(true);
+      threadCommentAuthorName({
+        comment: { authorId: MemberId.make("hub:acct-ada"), hubAuthor },
+        viewerHubAccountId: ME,
+      }),
+    ).toBe("Ada");
+    expect(
+      threadCommentAuthorName({
+        comment: {
+          authorId: MemberId.make(`hub:${ME}`),
+          hubAuthor: { ...hubAuthor, accountId: ME },
+        },
+        viewerHubAccountId: ME,
+      }),
+    ).toBe("You");
+    expect(
+      threadCommentAuthorName({
+        comment: { authorId: MemberId.make("m-1") },
+        viewerHubAccountId: ME,
+      }),
+    ).toBe("A former member");
   });
 });

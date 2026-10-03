@@ -66,22 +66,37 @@ export interface ThreadActionMenuState {
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
   /**
-   * Puff Collab: the viewer's relation to the thread. Followers only get the
-   * non-controlling items; admins may still archive or delete. Absent means
-   * the viewer owns the thread (single-user environments).
-   */
-  /**
    * Team hub (Stage 7): present once the environment is linked to a hub
    * account, so the project items offer linking this thread's project.
    */
   readonly teamHub?: { readonly projectLinked: boolean } | null;
+  /**
+   * Puff Collab: the viewer's relation to the thread. On a teammate's hub
+   * mirror (`remote`) only items that change the viewer's own view remain.
+   * Absent means the viewer's own thread off the hub.
+   */
   readonly collaboration?: {
-    readonly isOwner: boolean;
-    readonly isAdmin: boolean;
+    readonly remote: boolean;
     readonly teamEnabled: boolean;
     readonly visibility: ThreadVisibility;
   };
 }
+
+/**
+ * A teammate's mirror runs on its owner's machine: its lifecycle, title,
+ * sharing and checkout are theirs, and nothing local (branch, path) applies.
+ * Pin, snooze and mark-unread stay: they only change this viewer's view.
+ */
+const MIRROR_HIDDEN_ITEMS: ReadonlySet<ThreadActionMenuId> = new Set([
+  "new-thread-on-branch",
+  "settle",
+  "unsettle",
+  "rename",
+  "regenerate-title",
+  "auto-settle",
+  "archive",
+  "delete",
+]);
 
 /**
  * Single source for the per-thread action menu: the sidebar row's right-click
@@ -92,25 +107,17 @@ export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   const collaboration = state.collaboration;
-  const controls = collaboration?.isOwner ?? true;
-  const housekeeping = controls || collaboration?.isAdmin === true;
-  // Only the owner changes thread state; followers keep read-only items.
-  const ownerOnly = new Set<ThreadActionMenuId>([
-    "pin",
-    "unpin",
-    "settle",
-    "unsettle",
-    "snooze",
-    "unsnooze",
-    "rename",
-    "regenerate-title",
-    "auto-settle",
-  ]);
-  const items = buildAllThreadActionMenuItems(state).filter(
-    (item) =>
-      (controls || !ownerOnly.has(item.id)) &&
-      (housekeeping || (item.id !== "archive" && item.id !== "delete")),
-  );
+  const controls = collaboration?.remote !== true;
+  const all = buildAllThreadActionMenuItems(state);
+  const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = controls
+    ? all
+    : all.flatMap((item): Array<ContextMenuItem<ThreadActionMenuId>> => {
+        if (MIRROR_HIDDEN_ITEMS.has(item.id)) return [];
+        if (item.id !== "copy" || item.children === undefined) return [item];
+        return [
+          { ...item, children: item.children.filter((child) => child.id === "copy-thread-id") },
+        ];
+      });
   if (!controls || collaboration?.teamEnabled !== true) return items;
   const visibilityItem: ContextMenuItem<ThreadActionMenuId> = {
     id: "visibility",

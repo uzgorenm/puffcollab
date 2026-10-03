@@ -142,17 +142,16 @@ describe("threadRowMenuActionsForViewer", () => {
     { id: "delete" },
   ];
 
-  it("keeps every action for the owner", () => {
-    expect(threadRowMenuActionsForViewer(actions, { isOwner: true, isAdmin: false })).toEqual(
-      actions,
-    );
+  it("keeps every action on the viewer's own threads", () => {
+    expect(threadRowMenuActionsForViewer(actions, { remote: false })).toEqual(actions);
   });
 
-  it("leaves followers read-only items, plus archive and delete for admins", () => {
-    const ids = (isAdmin: boolean) =>
-      threadRowMenuActionsForViewer(actions, { isOwner: false, isAdmin }).map((a) => a.id);
-    expect(ids(false)).toEqual(["new-thread-on-branch", "copy-thread-id"]);
-    expect(ids(true)).toEqual(["new-thread-on-branch", "copy-thread-id", "archive", "delete"]);
+  it("leaves a teammate's mirror only actions on the viewer's own view", () => {
+    expect(threadRowMenuActionsForViewer(actions, { remote: true }).map((a) => a.id)).toEqual([
+      "copy-thread-id",
+      "snooze",
+      "pin",
+    ]);
   });
 });
 

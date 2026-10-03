@@ -118,7 +118,8 @@ function ThreadHeader(
         onPress: props.onReturnToThread,
       });
     }
-    if (props.hasThreadCwd) {
+    const localWorkspace = props.localWorkspaceAvailable !== false;
+    if (localWorkspace && props.hasThreadCwd) {
       const filesVisible = props.inspectorMode === "files" && panes.auxiliaryPaneVisible;
       actions.push({
         accessibilityLabel: filesVisible ? "Close files" : "Open files",
@@ -127,18 +128,20 @@ function ThreadHeader(
         onPress: filesVisible ? toggleAuxiliaryPane : props.onOpenFilesInspector,
       });
     }
-    if (props.hasWorkspaceRoot) {
+    if (localWorkspace && props.hasWorkspaceRoot) {
       actions.push({
         accessibilityLabel: "Open terminal",
         icon: "terminal",
         onPress: () => onOpenTerminal(null),
       });
     }
-    actions.push({
-      accessibilityLabel: "Open git controls",
-      icon: "point.topleft.down.curvedto.point.bottomright.up",
-      onPress: props.onOpenGitInspector,
-    });
+    if (localWorkspace) {
+      actions.push({
+        accessibilityLabel: "Open git controls",
+        icon: "point.topleft.down.curvedto.point.bottomright.up",
+        onPress: props.onOpenGitInspector,
+      });
+    }
     if (props.teamControl) {
       actions.push({
         accessibilityLabel: props.teamControl.attention ? "Team, notes waiting for you" : "Team",
@@ -158,6 +161,7 @@ function ThreadHeader(
     props.onReturnToThread,
     props.hasThreadCwd,
     props.hasWorkspaceRoot,
+    props.localWorkspaceAvailable,
   ]);
 
   return (
@@ -174,7 +178,9 @@ function ThreadHeader(
           props.teamControl ? props.teamControl.attention : null,
         ]}
         trailing={
-          props.fileInspectorSupported && props.hasThreadCwd ? (
+          props.fileInspectorSupported &&
+          props.hasThreadCwd &&
+          props.localWorkspaceAvailable !== false ? (
             <ScreenHeaderButton
               accessibilityLabel={
                 props.inspectorMode !== null && panes.auxiliaryPaneVisible
@@ -1104,6 +1110,7 @@ function ThreadRouteContent(
         onOpenFilesInspector={handleOpenFilesInspector}
         onReturnToThread={props.onReturnToThread}
         teamControl={teamControl}
+        localWorkspaceAvailable={!collaboration.remote}
       />
 
       {renderThreadRouteBody()}
