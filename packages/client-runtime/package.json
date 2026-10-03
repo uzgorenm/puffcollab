@@ -219,6 +219,10 @@
       "types": "./src/state/threadOwnership.ts",
       "default": "./src/state/threadOwnership.ts"
     },
+    "./state/hub": {
+      "types": "./src/state/hub.ts",
+      "default": "./src/state/hub.ts"
+    },
     "./state/team-overview": {
       "types": "./src/state/teamOverview.ts",
       "default": "./src/state/teamOverview.ts"
