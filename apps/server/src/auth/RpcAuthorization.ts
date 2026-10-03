@@ -148,6 +148,9 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.hubInvite]: AuthOrchestrationOperateScope,
   [WS_METHODS.hubRespondInvitation]: AuthOrchestrationOperateScope,
   [WS_METHODS.hubCancelInvitation]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hubSubscribeTeam]: AuthOrchestrationReadScope,
+  [WS_METHODS.hubRemoveMember]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hubLeaveProject]: AuthOrchestrationOperateScope,
   // Any project member reads the overview and writes the brief and their own focus;
   // the TeamOverview service checks membership.
   [WS_METHODS.teamOverviewActivityPage]: AuthOrchestrationReadScope,

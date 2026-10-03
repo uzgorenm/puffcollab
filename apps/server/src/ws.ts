@@ -3939,6 +3939,20 @@ const makeWsRpcLayer = (
           observeRpcEffect(WS_METHODS.hubCancelInvitation, hubSync.cancelInvitation(input), {
             "rpc.aggregate": "hub",
           }),
+        [WS_METHODS.hubSubscribeTeam]: (input) =>
+          observeRpcStream(
+            WS_METHODS.hubSubscribeTeam,
+            hubSync.subscribeProjectTeam(input.projectId),
+            { "rpc.aggregate": "hub" },
+          ),
+        [WS_METHODS.hubRemoveMember]: (input) =>
+          observeRpcEffect(WS_METHODS.hubRemoveMember, hubSync.removeMember(input), {
+            "rpc.aggregate": "hub",
+          }),
+        [WS_METHODS.hubLeaveProject]: (input) =>
+          observeRpcEffect(WS_METHODS.hubLeaveProject, hubSync.leaveProject(input), {
+            "rpc.aggregate": "hub",
+          }),
         [WS_METHODS.teamOverviewActivityPage]: (input) =>
           observeRpcEffect(
             WS_METHODS.teamOverviewActivityPage,

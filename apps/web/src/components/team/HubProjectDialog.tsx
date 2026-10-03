@@ -5,17 +5,20 @@ import {
   isHubLinked,
   parseGithubLoginInput,
 } from "@t3tools/client-runtime/state/hub";
-import type {
-  EnvironmentId,
-  HubLinkProjectResult,
-  HubLocalInvitation,
-  ProjectId,
+import {
+  canLeaveHubProject,
+  canRemoveHubMember,
+  type EnvironmentId,
+  type HubLinkProjectResult,
+  type HubLocalInvitation,
+  type HubLocalTeam,
+  type ProjectId,
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { useProject } from "../../state/entities";
-import { hubEnvironment, useHubInvitationGroups, useHubStatus } from "../../state/hub";
+import { hubEnvironment, useHubInvitationGroups, useHubStatus, useHubTeam } from "../../state/hub";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import {
@@ -178,6 +181,77 @@ function OutgoingInvitationRow({
   );
 }
 
+/** The hub project's members, with Remove for admins and Leave for everyone but the creator. */
+function HubTeamMembersSection({
+  environmentId,
+  projectId,
+  team,
+  onLeft,
+}: {
+  environmentId: EnvironmentId;
+  projectId: ProjectId;
+  team: HubLocalTeam;
+  onLeft?: () => void;
+}) {
+  const remove = useAtomCommand(hubEnvironment.removeMember);
+  const leave = useAtomCommand(hubEnvironment.leaveProject);
+  const [busy, setBusy] = useState(false);
+  return (
+    <section className="flex flex-col gap-2">
+      <SectionTitle>Members</SectionTitle>
+      {team.members.map((member) => {
+        const isViewer = member.accountId === team.viewerAccountId;
+        return (
+          <div key={member.accountId} className="flex items-center gap-2 text-sm">
+            <span className="min-w-0 flex-1 truncate">
+              {member.displayName}
+              <span className="text-muted-foreground">
+                {" "}
+                @{member.githubLogin}
+                {isViewer ? " (you)" : ""}
+                {member.accountId === team.creatorId
+                  ? " · created the project"
+                  : member.role === "admin"
+                    ? " · admin"
+                    : ""}
+              </span>
+            </span>
+            {isViewer && canLeaveHubProject(team) ? (
+              <Button
+                size="xs"
+                variant="ghost-destructive"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  const result = await leave({ environmentId, input: { projectId } });
+                  setBusy(false);
+                  if (result._tag === "Success") onLeft?.();
+                }}
+              >
+                Leave
+              </Button>
+            ) : canRemoveHubMember(team, member) ? (
+              <Button
+                size="xs"
+                variant="ghost-destructive"
+                disabled={busy}
+                onClick={() =>
+                  void remove({
+                    environmentId,
+                    input: { projectId, accountId: member.accountId },
+                  })
+                }
+              >
+                Remove
+              </Button>
+            ) : null}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 /** Invite by GitHub login into a hub-linked project, and cancel pending invitations. */
 export function HubProjectPeoplePanel({
   environmentId,
@@ -190,6 +264,7 @@ export function HubProjectPeoplePanel({
 }) {
   const status = useHubStatus(environmentId);
   const groups = useHubInvitationGroups(environmentId);
+  const team = useHubTeam(environmentId, projectId);
   const invite = useAtomCommand(hubEnvironment.invite);
   const [login, setLogin] = useState("");
   const [busy, setBusy] = useState(false);
@@ -212,6 +287,14 @@ export function HubProjectPeoplePanel({
 
   return (
     <div className="flex flex-col gap-5">
+      {team !== null ? (
+        <HubTeamMembersSection
+          environmentId={environmentId}
+          projectId={projectId}
+          team={team}
+          {...(onNavigate ? { onLeft: onNavigate } : {})}
+        />
+      ) : null}
       <section className="flex flex-col gap-2">
         <SectionTitle>Invite by GitHub login</SectionTitle>
         <form

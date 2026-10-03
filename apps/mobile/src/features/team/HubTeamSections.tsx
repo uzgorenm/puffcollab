@@ -7,12 +7,15 @@ import {
   parseGithubLoginInput,
   parseHubUrlInput,
 } from "@t3tools/client-runtime/state/hub";
-import type {
-  EnvironmentId,
-  HubLinkProjectResult,
-  HubLocalStatus,
-  HubPendingLink,
-  ProjectId,
+import {
+  canLeaveHubProject,
+  canRemoveHubMember,
+  type EnvironmentId,
+  type HubLinkProjectResult,
+  type HubLocalStatus,
+  type HubLocalTeam,
+  type HubPendingLink,
+  type ProjectId,
 } from "@t3tools/contracts";
 import { useNavigation } from "@react-navigation/native";
 import { Image } from "expo-image";
@@ -20,7 +23,7 @@ import { useState } from "react";
 import { Alert, Linking, View } from "react-native";
 
 import { AppText as Text, AppTextInput } from "../../components/AppText";
-import { hubEnvironment, useHubInvitationGroups, useHubStatus } from "../../state/hub";
+import { hubEnvironment, useHubInvitationGroups, useHubStatus, useHubTeam } from "../../state/hub";
 import { useEnvironmentMembers } from "../../state/members";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsSection } from "../settings/components/SettingsSection";
@@ -337,12 +340,87 @@ export function HubProjectLinkSection(props: {
   );
 }
 
-/** Invite by GitHub login into a hub-linked project, and cancel pending invitations. */
+function memberDetail(team: HubLocalTeam, member: HubLocalTeam["members"][number]): string {
+  const role =
+    member.accountId === team.creatorId
+      ? " · created the project"
+      : member.role === "admin"
+        ? " · admin"
+        : "";
+  return `@${member.githubLogin}${member.accountId === team.viewerAccountId ? " (you)" : ""}${role}`;
+}
+
+/** The hub project's members: Remove for admins, Leave for everyone but the creator. */
+function HubTeamMembersSection(props: {
+  readonly environmentId: EnvironmentId;
+  readonly projectId: ProjectId;
+  readonly team: HubLocalTeam;
+  readonly onLeft?: () => void;
+}) {
+  const remove = useAtomCommand(hubEnvironment.removeMember, "Remove member");
+  const leave = useAtomCommand(hubEnvironment.leaveProject, "Leave project");
+  const { team } = props;
+  const requestLeave = () =>
+    Alert.alert(
+      `Leave ${team.title}?`,
+      "Your shared threads stop syncing to it and teammates' threads disappear here.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Leave",
+          style: "destructive",
+          onPress: async () => {
+            const result = await leave({
+              environmentId: props.environmentId,
+              input: { projectId: props.projectId },
+            });
+            if (result._tag === "Success") props.onLeft?.();
+          },
+        },
+      ],
+    );
+  return (
+    <SettingsSection title="Members">
+      {team.members.map((member, index) => {
+        const isViewer = member.accountId === team.viewerAccountId;
+        return (
+          <TeamRow
+            key={member.accountId}
+            divided={index > 0}
+            icon="person.crop.circle"
+            title={member.displayName}
+            detail={memberDetail(team, member)}
+            trailing={
+              isViewer && canLeaveHubProject(team) ? (
+                <TeamPillButton label="Leave" onPress={requestLeave} />
+              ) : canRemoveHubMember(team, member) ? (
+                <TeamPillButton
+                  label="Remove"
+                  accessibilityLabel={`Remove ${member.displayName}`}
+                  onPress={() =>
+                    void remove({
+                      environmentId: props.environmentId,
+                      input: { projectId: props.projectId, accountId: member.accountId },
+                    })
+                  }
+                />
+              ) : undefined
+            }
+          />
+        );
+      })}
+    </SettingsSection>
+  );
+}
+
+/** Members, invite by GitHub login into a hub-linked project, and pending invitations. */
 export function HubProjectPeopleSections(props: {
   readonly environmentId: EnvironmentId;
   readonly projectId: ProjectId;
+  readonly onLeft?: () => void;
 }) {
   const status = useHubStatus(props.environmentId);
+  const team = useHubTeam(props.environmentId, props.projectId);
   const groups = useHubInvitationGroups(props.environmentId);
   const invite = useAtomCommand(hubEnvironment.invite, "Invite");
   const cancel = useAtomCommand(hubEnvironment.cancelInvitation, "Cancel invitation");
@@ -374,6 +452,14 @@ export function HubProjectPeopleSections(props: {
 
   return (
     <>
+      {team !== null ? (
+        <HubTeamMembersSection
+          environmentId={props.environmentId}
+          projectId={props.projectId}
+          team={team}
+          {...(props.onLeft ? { onLeft: props.onLeft } : {})}
+        />
+      ) : null}
       <SettingsSection title="Invite by GitHub login">
         <TeamCardBody>
           <TeamMutedText>

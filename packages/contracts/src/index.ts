@@ -36,6 +36,7 @@ export * from "./orchestration.ts";
 export * from "./teamOverview.ts";
 export * from "./hub.ts";
 export * from "./hubLocal.ts";
+export * from "./hubTeam.ts";
 export * from "./t3ProjectFile.ts";
 export * from "./editor.ts";
 export * from "./project.ts";

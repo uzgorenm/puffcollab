@@ -265,6 +265,40 @@ describe("authorization", () => {
   });
 });
 
+describe("members", () => {
+  it("lists members with their accounts and updates everyone when one leaves", async () => {
+    const { owner, mate, projectId } = await team();
+    const joined = owner.client.received.findLast(
+      (message) => message.type === "team.members" && message.members.length === 2,
+    );
+    expect(
+      joined?.members.map((member: { accountId: string; role: string }) => [
+        member.accountId,
+        member.role,
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        [owner.accountId, "admin"],
+        [mate.accountId, "member"],
+      ]),
+    );
+    const accountIds = new Set(
+      joined?.accounts.map((account: { accountId: string }) => account.accountId),
+    );
+    expect(accountIds.has(owner.accountId) && accountIds.has(mate.accountId)).toBe(true);
+
+    expect(await mate.client.request({ type: "member.leave", projectId })).toMatchObject({
+      type: "ack",
+    });
+    expect(await mate.client.nextOfType("team.removed")).toMatchObject({
+      projectId,
+      reason: "left",
+    });
+    const members = await owner.client.nextOfType("team.members", (m) => m.members.length === 1);
+    expect(members.members[0]?.accountId).toBe(owner.accountId);
+  });
+});
+
 describe("comments and brief", () => {
   it("comments are idempotent, reach the owner, and only their author deletes them", async () => {
     const { owner, mate, projectId } = await team();

@@ -69,7 +69,11 @@ import {
   type HubInvitationCancelInput,
   type HubInvitationRespondInput,
   type HubInviteInput,
+  type HubLeaveProjectInput,
   type HubLinkProjectInput,
+  type HubMemberRemoveInput,
+  type HubTeamResult,
+  HubTeamResult as HubTeamResultSchema,
   type HubUnlinkProjectInput,
   normalizeGithubLogin,
   type OrchestrationEvent,
@@ -119,6 +123,7 @@ import {
   toLocalInvitation,
   toMirrorEvent,
 } from "./hubThreads.ts";
+import { hubLocalTeamOf } from "./hubTeamView.ts";
 
 /** Secret-store entry holding the environment credential. */
 export const HUB_CREDENTIAL_SECRET = "hub-environment-credential";
@@ -174,6 +179,12 @@ export class HubSync extends Context.Service<
     readonly teamSnapshot: Effect.Effect<HubTeamSnapshot>;
     /** Team data now and after every change. */
     readonly subscribeTeam: Stream.Stream<HubTeamSnapshot>;
+    /** A local project's hub team now and after every change; null while unlinked. */
+    readonly subscribeProjectTeam: (projectId: ProjectId) => Stream.Stream<HubTeamResult>;
+    /** Admins remove another member from a linked project's hub project. */
+    readonly removeMember: (input: HubMemberRemoveInput) => Effect.Effect<void, HubLocalError>;
+    /** Leaves a linked project's hub project and unlinks the local project from it. */
+    readonly leaveProject: (input: HubLeaveProjectInput) => Effect.Effect<void, HubLocalError>;
     /** The full patch of a teammate's turn, when the hub delivered one. */
     readonly getRemoteTurnDiff: (
       threadId: ThreadId,
@@ -243,6 +254,7 @@ const encodeHubLink = Schema.encodeSync(Schema.fromJsonString(HubThreadLinkSchem
 const encodeEventBody = Schema.encodeSync(Schema.fromJsonString(HubThreadEventBodySchema));
 const encodeStatus = Schema.encodeSync(Schema.fromJsonString(HubLocalStatusSchema));
 const encodeInvitations = Schema.encodeSync(Schema.fromJsonString(HubLocalInvitationsResultSchema));
+const encodeTeamResult = Schema.encodeSync(Schema.fromJsonString(HubTeamResultSchema));
 const encodeClientFrame = Schema.encodeSync(HubClientFrame);
 const decodeLinkStart = Schema.decodeUnknownEffect(HubLinkStartResponse);
 const decodeLinkToken = Schema.decodeUnknownOption(HubLinkTokenResponse);
@@ -351,6 +363,8 @@ const make = Effect.gen(function* () {
     const rows = yield* store.listProjectLinks;
     projectLinks = new Map(rows.map((row) => [row.projectId, row]));
     yield* updateStatus({ projects: projectLinksOf() });
+    // Per-project team views depend on the links; republish so they follow.
+    yield* SubscriptionRef.update(team, (state) => ({ ...state }));
   });
 
   const localProjectsOf = (hubProjectId: HubProjectId) =>
@@ -868,6 +882,20 @@ const make = Effect.gen(function* () {
     incomingInvitations: state.incoming,
   });
 
+  const projectTeamOf = (state: TeamState, projectId: ProjectId): HubTeamResult => {
+    const link = projectLinks.get(projectId);
+    const project = link === undefined ? undefined : state.projects.get(link.hubProjectId);
+    if (project === undefined || state.account === null) return { team: null };
+    return {
+      team: hubLocalTeamOf({
+        projectId,
+        state: project,
+        viewer: state.account,
+        accounts: accountsOf(state),
+      }),
+    };
+  };
+
   const toLocalInvitations = (state: TeamState): HubLocalInvitationsResult => {
     const accounts = accountsOf(state);
     const outgoing = [...state.projects.values()].flatMap((project) =>
@@ -1343,7 +1371,9 @@ const make = Effect.gen(function* () {
             projects.delete(message.projectId);
             return { ...state, projects };
           });
-          return yield* removeMirrorsOfProject(message.projectId);
+          // Left or removed: this server can no longer publish there, so its
+          // local projects stop being linked to it.
+          return yield* unlinkHubProject(message.projectId);
         }
         case "team.thread": {
           yield* updateProject(message.summary.projectId, (state) => ({
@@ -1987,6 +2017,47 @@ const make = Effect.gen(function* () {
       }),
     );
 
+  /** Unlinks every local project from a hub project the account no longer belongs to. */
+  const unlinkHubProject = (hubProjectId: HubProjectId) =>
+    Effect.gen(function* () {
+      const local = localProjectsOf(hubProjectId);
+      for (const projectId of local) yield* store.deleteProjectLink(projectId);
+      if (local.length > 0) {
+        yield* reloadProjectLinks;
+        yield* publisher.enqueue({ kind: "reconcile" });
+      }
+      yield* removeMirrorsOfProject(hubProjectId);
+    });
+
+  const requireProjectLink = (projectId: ProjectId) => {
+    const link = projectLinks.get(projectId);
+    return link === undefined
+      ? Effect.fail(hubError("invalid", "Link this project to the team hub first."))
+      : Effect.succeed(link);
+  };
+
+  const removeMember: HubSync["Service"]["removeMember"] = (input) =>
+    Effect.gen(function* () {
+      const link = yield* requireProjectLink(input.projectId);
+      yield* request((requestId) => ({
+        type: "member.remove",
+        requestId,
+        projectId: link.hubProjectId,
+        accountId: input.accountId,
+      }));
+    });
+
+  const leaveProject: HubSync["Service"]["leaveProject"] = (input) =>
+    Effect.gen(function* () {
+      const link = yield* requireProjectLink(input.projectId);
+      yield* request((requestId) => ({
+        type: "member.leave",
+        requestId,
+        projectId: link.hubProjectId,
+      }));
+      yield* persistence(unlinkHubProject(link.hubProjectId));
+    });
+
   // ---------------------------------------------------------------------------
   // Invitations
   // ---------------------------------------------------------------------------
@@ -2140,6 +2211,13 @@ const make = Effect.gen(function* () {
     cancelInvitation,
     teamSnapshot: SubscriptionRef.get(team).pipe(Effect.map(toTeamSnapshot)),
     subscribeTeam: SubscriptionRef.changes(team).pipe(Stream.map(toTeamSnapshot)),
+    subscribeProjectTeam: (projectId) =>
+      SubscriptionRef.changes(team).pipe(
+        Stream.map((state) => projectTeamOf(state, projectId)),
+        Stream.changesWith((left, right) => encodeTeamResult(left) === encodeTeamResult(right)),
+      ),
+    removeMember,
+    leaveProject,
     getRemoteTurnDiff: (threadId, checkpointTurnCount) =>
       store.getRemoteDiff(threadId, checkpointTurnCount).pipe(Effect.orElseSucceed(() => null)),
     drain: publisher.drain,

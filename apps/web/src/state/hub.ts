@@ -9,6 +9,7 @@ import type {
   EnvironmentId,
   HubLocalProjectLink,
   HubLocalStatus,
+  HubLocalTeam,
   ProjectId,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -88,5 +89,23 @@ export function useHubInvitationGroups(environmentId: EnvironmentId | null): Hub
         ? EMPTY_GROUPS
         : groupHubInvitations(invitations, new Date().toISOString()),
     [invitations],
+  );
+}
+
+/**
+ * A hub-linked project's team (members and Team overview data), pushed by the
+ * server. Null while loading, and for projects that are not on the hub.
+ */
+export function useHubTeam(
+  environmentId: EnvironmentId | null,
+  projectId: ProjectId | null,
+): HubLocalTeam | null {
+  const link = useHubProjectLink(environmentId, projectId);
+  return (
+    useEnvironmentQuery(
+      link !== null && environmentId !== null && projectId !== null
+        ? hubEnvironment.team({ environmentId, input: { projectId } })
+        : null,
+    ).data?.team ?? null
   );
 }

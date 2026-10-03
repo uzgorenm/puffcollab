@@ -76,6 +76,14 @@ export function createHubEnvironmentAtoms<R, E>(
     invite: command("invite", WS_METHODS.hubInvite),
     respondInvitation: command("respond-invitation", WS_METHODS.hubRespondInvitation),
     cancelInvitation: command("cancel-invitation", WS_METHODS.hubCancelInvitation),
+    /** A linked project's hub team (members, and the overview in Team overview). */
+    team: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:hub:team",
+      tag: WS_METHODS.hubSubscribeTeam,
+      idleTtlMs: 30_000,
+    }),
+    removeMember: command("remove-member", WS_METHODS.hubRemoveMember),
+    leaveProject: command("leave-project", WS_METHODS.hubLeaveProject),
   };
 }
 
@@ -88,7 +96,9 @@ type HubCommandTag =
   | typeof WS_METHODS.hubUnlinkProject
   | typeof WS_METHODS.hubInvite
   | typeof WS_METHODS.hubRespondInvitation
-  | typeof WS_METHODS.hubCancelInvitation;
+  | typeof WS_METHODS.hubCancelInvitation
+  | typeof WS_METHODS.hubRemoveMember
+  | typeof WS_METHODS.hubLeaveProject;
 
 /** Shown as a hint in the hub URL field; never used as a value. */
 export const HUB_URL_PLACEHOLDER = "https://puffcollab-hub.<subdomain>.workers.dev";

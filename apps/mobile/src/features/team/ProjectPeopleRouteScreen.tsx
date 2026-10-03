@@ -67,6 +67,7 @@ function HubProjectPeopleScreen(props: ProjectPeopleRouteProps) {
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const projectId = ProjectId.make(props.route.params.projectId);
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const project = useProject(
     useMemo(() => scopeProjectRef(environmentId, projectId), [environmentId, projectId]),
   );
@@ -82,7 +83,11 @@ function HubProjectPeopleScreen(props: ProjectPeopleRouteProps) {
         contentContainerClassName="gap-6 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
-        <HubProjectPeopleSections environmentId={environmentId} projectId={projectId} />
+        <HubProjectPeopleSections
+          environmentId={environmentId}
+          projectId={projectId}
+          onLeft={() => navigation.goBack()}
+        />
       </ScreenScrollView>
     </SettingsScreen>
   );

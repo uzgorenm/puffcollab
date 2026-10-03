@@ -9,6 +9,7 @@ import type {
   EnvironmentId,
   HubLocalProjectLink,
   HubLocalStatus,
+  HubLocalTeam,
   ProjectId,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -67,5 +68,20 @@ export function useHubInvitationGroups(environmentId: EnvironmentId | null): Hub
         ? EMPTY_GROUPS
         : groupHubInvitations(invitations, new Date().toISOString()),
     [invitations],
+  );
+}
+
+/** A hub-linked project's team, pushed by the server; null while loading or unlinked. */
+export function useHubTeam(
+  environmentId: EnvironmentId | null,
+  projectId: ProjectId | null,
+): HubLocalTeam | null {
+  const link = useHubProjectLink(environmentId, projectId);
+  return (
+    useEnvironmentQuery(
+      link !== null && environmentId !== null && projectId !== null
+        ? hubEnvironment.team({ environmentId, input: { projectId } })
+        : null,
+    ).data?.team ?? null
   );
 }

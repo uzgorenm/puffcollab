@@ -351,6 +351,12 @@ import {
   HubPendingLink,
   HubUnlinkProjectInput,
 } from "./hubLocal.ts";
+import {
+  HubLeaveProjectInput,
+  HubMemberRemoveInput,
+  HubTeamInput,
+  HubTeamResult,
+} from "./hubTeam.ts";
 import { VcsError } from "./vcs.ts";
 
 export const WS_METHODS = {
@@ -567,6 +573,9 @@ export const WS_METHODS = {
   hubInvite: "hub.invite",
   hubRespondInvitation: "hub.respondInvitation",
   hubCancelInvitation: "hub.cancelInvitation",
+  hubSubscribeTeam: "hub.subscribeTeam",
+  hubRemoveMember: "hub.removeMember",
+  hubLeaveProject: "hub.leaveProject",
   subscribeServerLifecycle: "subscribeServerLifecycle",
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
@@ -1278,6 +1287,24 @@ const WsHubCancelInvitationRpc = Rpc.make(WS_METHODS.hubCancelInvitation, {
   error: HubLocalRpcError,
 });
 
+// A linked project's hub team now and after every change.
+const WsHubSubscribeTeamRpc = Rpc.make(WS_METHODS.hubSubscribeTeam, {
+  payload: HubTeamInput,
+  success: HubTeamResult,
+  error: HubLocalRpcError,
+  stream: true,
+});
+const WsHubRemoveMemberRpc = Rpc.make(WS_METHODS.hubRemoveMember, {
+  payload: HubMemberRemoveInput,
+  success: Schema.Void,
+  error: HubLocalRpcError,
+});
+const WsHubLeaveProjectRpc = Rpc.make(WS_METHODS.hubLeaveProject, {
+  payload: HubLeaveProjectInput,
+  success: Schema.Void,
+  error: HubLocalRpcError,
+});
+
 const WsSubscribeProjectInvitationsRpc = Rpc.make(WS_METHODS.subscribeProjectInvitations, {
   payload: Schema.Struct({}),
   success: ProjectInvitationsListResult,
@@ -1911,6 +1938,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsHubInviteRpc,
   WsHubRespondInvitationRpc,
   WsHubCancelInvitationRpc,
+  WsHubSubscribeTeamRpc,
+  WsHubRemoveMemberRpc,
+  WsHubLeaveProjectRpc,
   WsTeamOverviewActivityPageRpc,
   WsTeamOverviewBriefHistoryRpc,
   WsTeamOverviewUpdateBriefRpc,

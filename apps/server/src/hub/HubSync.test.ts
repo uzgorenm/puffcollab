@@ -105,6 +105,10 @@ const makeFakeHub = (options: { readonly range?: HubProtocolRange } = {}) =>
     const tokenResponses: Array<HubLinkTokenResponse> = [];
     const pushedFrames: Array<string> = [];
     let rejectNextPublish: { readonly expectedSeq: number } | null = null;
+    let members = [
+      { accountId: ME.accountId, role: "admin" as const, joinedAt: NOW, invitedBy: null },
+      { accountId: BOB.accountId, role: "member" as const, joinedAt: NOW, invitedBy: ME.accountId },
+    ];
     let socket: {
       readonly incoming: Queue.Queue<string, Cause.Done>;
       readonly closed: Deferred.Deferred<HubTransport.HubSocketClose>;
@@ -150,7 +154,7 @@ const makeFakeHub = (options: { readonly range?: HubProtocolRange } = {}) =>
         createdBy: ME.accountId,
         createdAt: NOW,
       },
-      members: [],
+      members,
       accounts: [ME as never, BOB as never],
       brief: null,
       focuses: [],
@@ -275,6 +279,22 @@ const makeFakeHub = (options: { readonly range?: HubProtocolRange } = {}) =>
                 text: message.text,
                 createdAt: NOW,
               },
+            });
+          case "member.remove":
+            members = members.filter((member) => member.accountId !== message.accountId);
+            yield* push({ type: "ack", requestId: message.requestId });
+            return yield* push({
+              type: "team.members",
+              projectId: message.projectId,
+              members,
+              accounts: [ME as never, BOB as never],
+            });
+          case "member.leave":
+            yield* push({ type: "ack", requestId: message.requestId });
+            return yield* push({
+              type: "team.removed",
+              projectId: message.projectId,
+              reason: "left",
             });
           default:
             return;
@@ -1019,6 +1039,53 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
             (message) => message.type === "comment.add",
           );
           expect(adds).toHaveLength(1);
+        }),
+      );
+    }).pipe(Effect.provide(baseLayer)),
+  );
+
+  it.effect("shows a linked project's hub members, removes one, and leaving unlinks it", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakeHub();
+      yield* withHub(fake, (hub) =>
+        Effect.gen(function* () {
+          yield* linkEnvironment(hub, fake);
+          yield* setupProjects(hub);
+          const unlinked = yield* hub.subscribeProjectTeam(OTHER_PROJECT).pipe(Stream.runHead);
+          expect(Option.getOrThrow(unlinked).team).toBeNull();
+          const teamOf = (predicate: (count: number) => boolean) =>
+            hub.subscribeProjectTeam(PROJECT).pipe(
+              Stream.filter(
+                (result) => result.team !== null && predicate(result.team.members.length),
+              ),
+              Stream.runHead,
+              Effect.map((result) => Option.getOrThrow(result).team!),
+            );
+          const team = yield* teamOf((count) => count === 2);
+          expect(team).toMatchObject({
+            projectId: PROJECT,
+            hubProjectId: HUB_PROJECT,
+            viewerAccountId: ME.accountId,
+            creatorId: ME.accountId,
+          });
+          expect(team.members.map((member) => [member.githubLogin, member.role])).toEqual([
+            ["me", "admin"],
+            ["bob", "member"],
+          ]);
+
+          yield* hub.removeMember({ projectId: PROJECT, accountId: BOB.accountId });
+          const after = yield* teamOf((count) => count === 1);
+          expect(after.members.map((member) => member.githubLogin)).toEqual(["me"]);
+
+          yield* hub.leaveProject({ projectId: PROJECT });
+          const status = yield* waitStatus(hub, (next) => next.projects.length === 0);
+          expect(status.projects).toEqual([]);
+          const gone = yield* hub.subscribeProjectTeam(PROJECT).pipe(Stream.runHead);
+          expect(Option.getOrThrow(gone).team).toBeNull();
+          const notLinked = yield* Effect.flip(
+            hub.removeMember({ projectId: PROJECT, accountId: BOB.accountId }),
+          );
+          expect(notLinked.reason).toBe("invalid");
         }),
       );
     }).pipe(Effect.provide(baseLayer)),
