@@ -126,8 +126,16 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.membersRevokeAccess]: AuthAccessWriteScope,
   [WS_METHODS.projectMembersList]: AuthOrchestrationReadScope,
   [WS_METHODS.relatedWorkSuggest]: AuthOrchestrationReadScope,
-  [WS_METHODS.projectMembersAdd]: AuthAccessWriteScope,
-  [WS_METHODS.projectMembersRemove]: AuthAccessWriteScope,
+  // Ordinary members invite people to, leave, and manage their own projects;
+  // the ProjectInvitations service checks membership, creator, and admin rules.
+  [WS_METHODS.projectMembersRemove]: AuthOrchestrationOperateScope,
+  [WS_METHODS.projectMembersLeave]: AuthOrchestrationOperateScope,
+  [WS_METHODS.projectInvitationsInvite]: AuthOrchestrationOperateScope,
+  [WS_METHODS.projectInvitationsList]: AuthOrchestrationReadScope,
+  [WS_METHODS.projectInvitationsAccept]: AuthOrchestrationOperateScope,
+  [WS_METHODS.projectInvitationsDecline]: AuthOrchestrationOperateScope,
+  [WS_METHODS.projectInvitationsCancel]: AuthOrchestrationOperateScope,
+  [WS_METHODS.subscribeProjectInvitations]: AuthOrchestrationReadScope,
   // Any project member reads the overview and writes the brief and their own focus;
   // the TeamOverview service checks membership.
   [WS_METHODS.teamOverviewActivityPage]: AuthOrchestrationReadScope,

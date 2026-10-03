@@ -535,6 +535,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               INSERT OR IGNORE INTO team_project_members (project_id, member_id, added_at)
               VALUES (${event.payload.projectId}, ${event.metadata.actor}, ${event.payload.createdAt})
             `.pipe(
+              Effect.andThen(sql`
+                INSERT OR IGNORE INTO team_project_creators (project_id, member_id)
+                VALUES (${event.payload.projectId}, ${event.metadata.actor})
+              `),
               Effect.mapError(
                 toPersistenceSqlError("ProjectionPipeline.projects:creatorMembership"),
               ),

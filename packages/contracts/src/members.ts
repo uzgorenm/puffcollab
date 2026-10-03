@@ -26,6 +26,10 @@ export const Member = Schema.Struct({
   createdAt: IsoDateTime,
   /** Set when an admin removes the member. Removed members cannot sign in. */
   removedAt: Schema.NullOr(IsoDateTime),
+  /** The member who invited this person to a project, when they joined that way. */
+  invitedBy: Schema.optional(Schema.NullOr(MemberId)),
+  /** True until an invited person redeems their sign-in link. */
+  pending: Schema.optional(Schema.Boolean),
 });
 export type Member = typeof Member.Type;
 
@@ -72,6 +76,8 @@ export type ProjectMembersInput = typeof ProjectMembersInput.Type;
 export const ProjectMembersResult = Schema.Struct({
   projectId: ProjectId,
   memberIds: Schema.Array(MemberId),
+  /** The member who created the project; they and admins can remove members. */
+  creatorId: Schema.optional(Schema.NullOr(MemberId)),
 });
 export type ProjectMembersResult = typeof ProjectMembersResult.Type;
 

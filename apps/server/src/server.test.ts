@@ -67,6 +67,8 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import type * as Context from "effect/Context";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
@@ -190,6 +192,7 @@ import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
 import * as WorkspaceAccess from "./team/WorkspaceAccess.ts";
 import * as TeamOverview from "./team/TeamOverview.ts";
+import * as ProjectInvitations from "./team/ProjectInvitations.ts";
 import * as CooperationService from "./cooperation/CooperationService.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
@@ -1254,7 +1257,7 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(
         Layer.mergeAll(
           Layer.mock(TeamOverview.TeamOverview)({}),
-          Layer.mergeAll(RelatedWork.layer, WorkspaceAccess.layer).pipe(
+          Layer.mergeAll(RelatedWork.layer, WorkspaceAccess.layer, ProjectInvitations.layer).pipe(
             Layer.provideMerge(
               ThreadAccess.layer.pipe(
                 Layer.provideMerge(TeamAccess.layer.pipe(Layer.provideMerge(makeAuthTestLayer()))),
@@ -1274,8 +1277,19 @@ const buildAppUnderTest = (options?: {
       Layer.provide(layerConfig),
     );
 
-    yield* Layer.build(appLayer);
+    builtAppContext = yield* Layer.build(appLayer);
     return config;
+  });
+
+// The services of the most recent `buildAppUnderTest`, for seeding its database.
+let builtAppContext: Context.Context<never> | undefined;
+
+const withBuiltApp = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
+  Effect.suspend(() => {
+    if (builtAppContext === undefined) return Effect.die("buildAppUnderTest has not run");
+    return effect.pipe(
+      Effect.provideContext(builtAppContext as Context.Context<SqlClient.SqlClient>),
+    );
   });
 
 const parseSessionCookieFromWsUrl = (
@@ -13610,6 +13624,39 @@ it.layer(NodeServices.layer)("team members", (it) => {
       return { member, memberWsUrl };
     });
 
+  const seedProject = (projectId: ProjectId) =>
+    withBuiltApp(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`
+          INSERT OR IGNORE INTO projection_projects
+            (project_id, title, workspace_root, scripts_json, created_at, updated_at, deleted_at)
+          VALUES (${projectId}, ${`Project ${projectId}`}, ${`/tmp/${projectId}`}, '[]', ${now}, ${now}, NULL)
+        `;
+      }).pipe(Effect.orDie),
+    );
+
+  // The owner invites the member and the member accepts: the only way into a project.
+  const inviteAndAccept = (
+    ownerWsUrl: string,
+    memberWsUrl: string,
+    projectId: ProjectId,
+    memberId: MemberId,
+  ) =>
+    Effect.gen(function* () {
+      yield* seedProject(projectId);
+      const { invitation } = yield* Effect.scoped(
+        withWsRpcClient(ownerWsUrl, (client) =>
+          client[WS_METHODS.projectInvitationsInvite]({ projectId, memberId }),
+        ),
+      );
+      return yield* Effect.scoped(
+        withWsRpcClient(memberWsUrl, (client) =>
+          client[WS_METHODS.projectInvitationsAccept]({ invitationId: invitation.invitationId }),
+        ),
+      );
+    });
+
   it.effect("stamps the session's member as the actor and ignores client-supplied metadata", () =>
     Effect.gen(function* () {
       const actors: Array<MemberId | undefined> = [];
@@ -13641,16 +13688,11 @@ it.layer(NodeServices.layer)("team members", (it) => {
 
       yield* Effect.scoped(
         withWsRpcClient(ownerWsUrl, (client) =>
-          Effect.andThen(
-            client[ORCHESTRATION_WS_METHODS.dispatchCommand](metaUpdate("cmd-owner")),
-            // Project commands need project membership.
-            client[WS_METHODS.projectMembersAdd]({
-              projectId: defaultProjectId,
-              memberId: member.memberId,
-            }),
-          ),
+          client[ORCHESTRATION_WS_METHODS.dispatchCommand](metaUpdate("cmd-owner")),
         ),
       );
+      // Project commands need project membership.
+      yield* inviteAndAccept(ownerWsUrl, memberWsUrl, defaultProjectId, member.memberId);
       yield* Effect.scoped(
         withWsRpcClient(memberWsUrl, (client) =>
           client[ORCHESTRATION_WS_METHODS.dispatchCommand](metaUpdate("cmd-member")),
@@ -13725,14 +13767,7 @@ it.layer(NodeServices.layer)("team members", (it) => {
       assert.deepEqual(beforeSharing?.projects, []);
       assert.deepEqual(beforeSharing?.threads, []);
 
-      yield* Effect.scoped(
-        withWsRpcClient(ownerWsUrl, (client) =>
-          client[WS_METHODS.projectMembersAdd]({
-            projectId: sharedProjectId,
-            memberId: member.memberId,
-          }),
-        ),
-      );
+      yield* inviteAndAccept(ownerWsUrl, memberWsUrl, sharedProjectId, member.memberId);
       const afterSharing = yield* firstShellSnapshot(memberWsUrl);
       assert.deepEqual(
         afterSharing?.projects.map((project) => project.id),
@@ -13751,7 +13786,7 @@ it.layer(NodeServices.layer)("team members", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("resends a member's shell when an admin shares a project with them", () =>
+  it.effect("resends a member's shell when they accept a project invitation", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({
         layers: {
@@ -13774,14 +13809,7 @@ it.layer(NodeServices.layer)("team members", (it) => {
               Effect.forkScoped,
             );
             yield* Deferred.await(subscribed);
-            yield* Effect.scoped(
-              withWsRpcClient(ownerWsUrl, (owner) =>
-                owner[WS_METHODS.projectMembersAdd]({
-                  projectId: sharedProjectId,
-                  memberId: member.memberId,
-                }),
-              ),
-            );
+            yield* inviteAndAccept(ownerWsUrl, memberWsUrl, sharedProjectId, member.memberId);
             return yield* Fiber.join(collected);
           }),
         ),

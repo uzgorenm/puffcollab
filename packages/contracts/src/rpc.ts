@@ -50,6 +50,16 @@ import {
   TeamMembersError,
 } from "./members.ts";
 import {
+  ProjectInvitationIdInput,
+  ProjectInvitationInviteInput,
+  ProjectInvitationInviteResult,
+  ProjectInvitation,
+  ProjectInvitationsError,
+  ProjectInvitationsListInput,
+  ProjectInvitationsListResult,
+  ProjectLeaveInput,
+} from "./projectInvitations.ts";
+import {
   ProjectBriefHistoryInput,
   ProjectBriefHistoryResult,
   ProjectBriefUpdateInput,
@@ -349,8 +359,13 @@ export const WS_METHODS = {
   membersIssueCredential: "members.issueCredential",
   membersRevokeAccess: "members.revokeAccess",
   projectMembersList: "projectMembers.list",
-  projectMembersAdd: "projectMembers.add",
   projectMembersRemove: "projectMembers.remove",
+  projectMembersLeave: "projectMembers.leave",
+  projectInvitationsInvite: "projectInvitations.invite",
+  projectInvitationsList: "projectInvitations.list",
+  projectInvitationsAccept: "projectInvitations.accept",
+  projectInvitationsDecline: "projectInvitations.decline",
+  projectInvitationsCancel: "projectInvitations.cancel",
 
   // Team overview (Puff Collab)
   teamOverviewActivityPage: "teamOverview.activityPage",
@@ -526,6 +541,7 @@ export const WS_METHODS = {
   subscribeDeviceState: "subscribeDeviceState",
   subscribeServerConfig: "subscribeServerConfig",
   subscribeTeamOverview: "subscribeTeamOverview",
+  subscribeProjectInvitations: "subscribeProjectInvitations",
   subscribeServerLifecycle: "subscribeServerLifecycle",
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
@@ -1128,16 +1144,61 @@ const WsProjectMembersListRpc = Rpc.make(WS_METHODS.projectMembersList, {
   error: TeamMembersRpcError,
 });
 
-const WsProjectMembersAddRpc = Rpc.make(WS_METHODS.projectMembersAdd, {
-  payload: ProjectMemberInput,
-  success: ProjectMembersResult,
-  error: TeamMembersRpcError,
-});
+const ProjectInvitationsRpcError = Schema.Union([
+  ProjectInvitationsError,
+  EnvironmentAuthorizationError,
+]);
 
+// The project's creator and admins remove members; a member removes themselves with leave.
 const WsProjectMembersRemoveRpc = Rpc.make(WS_METHODS.projectMembersRemove, {
   payload: ProjectMemberInput,
   success: ProjectMembersResult,
-  error: TeamMembersRpcError,
+  error: ProjectInvitationsRpcError,
+});
+
+const WsProjectMembersLeaveRpc = Rpc.make(WS_METHODS.projectMembersLeave, {
+  payload: ProjectLeaveInput,
+  success: ProjectMembersResult,
+  error: ProjectInvitationsRpcError,
+});
+
+// Any project member invites a teammate or a new person; nobody joins until they accept.
+const WsProjectInvitationsInviteRpc = Rpc.make(WS_METHODS.projectInvitationsInvite, {
+  payload: ProjectInvitationInviteInput,
+  success: ProjectInvitationInviteResult,
+  error: ProjectInvitationsRpcError,
+});
+
+const WsProjectInvitationsListRpc = Rpc.make(WS_METHODS.projectInvitationsList, {
+  payload: ProjectInvitationsListInput,
+  success: ProjectInvitationsListResult,
+  error: ProjectInvitationsRpcError,
+});
+
+const WsProjectInvitationsAcceptRpc = Rpc.make(WS_METHODS.projectInvitationsAccept, {
+  payload: ProjectInvitationIdInput,
+  success: ProjectInvitation,
+  error: ProjectInvitationsRpcError,
+});
+
+const WsProjectInvitationsDeclineRpc = Rpc.make(WS_METHODS.projectInvitationsDecline, {
+  payload: ProjectInvitationIdInput,
+  success: ProjectInvitation,
+  error: ProjectInvitationsRpcError,
+});
+
+const WsProjectInvitationsCancelRpc = Rpc.make(WS_METHODS.projectInvitationsCancel, {
+  payload: ProjectInvitationIdInput,
+  success: ProjectInvitation,
+  error: ProjectInvitationsRpcError,
+});
+
+// The caller's pending invitations now and after every change to them.
+const WsSubscribeProjectInvitationsRpc = Rpc.make(WS_METHODS.subscribeProjectInvitations, {
+  payload: Schema.Struct({}),
+  success: ProjectInvitationsListResult,
+  error: ProjectInvitationsRpcError,
+  stream: true,
 });
 
 const TeamOverviewRpcError = Schema.Union([TeamOverviewError, EnvironmentAuthorizationError]);
@@ -1747,8 +1808,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsMembersIssueCredentialRpc,
   WsMembersRevokeAccessRpc,
   WsProjectMembersListRpc,
-  WsProjectMembersAddRpc,
   WsProjectMembersRemoveRpc,
+  WsProjectMembersLeaveRpc,
+  WsProjectInvitationsInviteRpc,
+  WsProjectInvitationsListRpc,
+  WsProjectInvitationsAcceptRpc,
+  WsProjectInvitationsDeclineRpc,
+  WsProjectInvitationsCancelRpc,
+  WsSubscribeProjectInvitationsRpc,
   WsTeamOverviewActivityPageRpc,
   WsTeamOverviewBriefHistoryRpc,
   WsTeamOverviewUpdateBriefRpc,

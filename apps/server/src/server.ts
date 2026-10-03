@@ -134,6 +134,7 @@ import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
 import * as WorkspaceAccess from "./team/WorkspaceAccess.ts";
 import * as TeamOverview from "./team/TeamOverview.ts";
+import * as ProjectInvitations from "./team/ProjectInvitations.ts";
 import * as CooperationAnalyst from "./cooperation/CooperationAnalyst.ts";
 import * as CooperationReactor from "./cooperation/CooperationReactor.ts";
 import * as CooperationService from "./cooperation/CooperationService.ts";
@@ -574,6 +575,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(WorkspaceAccess.layer),
   Layer.provideMerge(ThreadAccess.layer),
   Layer.provideMerge(RelatedWork.layer),
+  Layer.provideMerge(ProjectInvitations.layer),
   Layer.provideMerge(TeamAccess.layer),
   Layer.provideMerge(ServerEnvironmentLayerLive),
   Layer.provideMerge(AuthLayerLive),

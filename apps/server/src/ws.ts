@@ -169,6 +169,7 @@ import * as TeamAccess from "./team/TeamAccess.ts";
 import * as ThreadAccess from "./team/ThreadAccess.ts";
 import * as WorkspaceAccess from "./team/WorkspaceAccess.ts";
 import * as TeamOverview from "./team/TeamOverview.ts";
+import * as ProjectInvitations from "./team/ProjectInvitations.ts";
 import * as CooperationService from "./cooperation/CooperationService.ts";
 import { requiredScopeForRpcMethod, requiredScopeForDeviceList } from "./auth/RpcAuthorization.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
@@ -573,6 +574,7 @@ const makeWsRpcLayer = (
       const threadAccess = yield* ThreadAccess.ThreadAccess;
       const workspaceAccess = yield* WorkspaceAccess.WorkspaceAccess;
       const teamOverview = yield* TeamOverview.TeamOverview;
+      const projectInvitations = yield* ProjectInvitations.ProjectInvitations;
       const relatedWork = yield* RelatedWork.RelatedWork;
       const currentMemberId = currentMember.memberId;
       const cooperation = yield* CooperationService.CooperationService;
@@ -3779,9 +3781,11 @@ const makeWsRpcLayer = (
         [WS_METHODS.membersList]: () =>
           observeRpcEffect(
             WS_METHODS.membersList,
-            teamAccess.listMembers().pipe(
+            projectInvitations.listMembers().pipe(
               Effect.map((members) => ({ members, currentMemberId })),
-              Effect.mapError(toTeamMembersError),
+              Effect.mapError(
+                (error) => new TeamMembersError({ reason: "internal", message: error.message }),
+              ),
             ),
             { "rpc.aggregate": "team" },
           ),
@@ -3819,16 +3823,54 @@ const makeWsRpcLayer = (
               .pipe(Effect.mapError(toTeamMembersError)),
             { "rpc.aggregate": "team" },
           ),
-        [WS_METHODS.projectMembersAdd]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.projectMembersAdd,
-            teamAccess.addProjectMember(input).pipe(Effect.mapError(toTeamMembersError)),
-            { "rpc.aggregate": "team" },
-          ),
         [WS_METHODS.projectMembersRemove]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectMembersRemove,
-            teamAccess.removeProjectMember(input).pipe(Effect.mapError(toTeamMembersError)),
+            projectInvitations.removeProjectMember(currentMemberId, input),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.projectMembersLeave]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectMembersLeave,
+            projectInvitations.leaveProject(currentMemberId, input.projectId),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.projectInvitationsInvite]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectInvitationsInvite,
+            projectInvitations.invite(currentMemberId, input),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.projectInvitationsList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectInvitationsList,
+            input.projectId === undefined
+              ? projectInvitations.listMine(currentMemberId)
+              : projectInvitations.listForProject(currentMemberId, input.projectId),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.projectInvitationsAccept]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectInvitationsAccept,
+            projectInvitations.accept(currentMemberId, input.invitationId),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.projectInvitationsDecline]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectInvitationsDecline,
+            projectInvitations.decline(currentMemberId, input.invitationId),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.projectInvitationsCancel]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectInvitationsCancel,
+            projectInvitations.cancel(currentMemberId, input.invitationId),
+            { "rpc.aggregate": "team" },
+          ),
+        [WS_METHODS.subscribeProjectInvitations]: () =>
+          observeRpcStream(
+            WS_METHODS.subscribeProjectInvitations,
+            projectInvitations.subscribeMine(currentMemberId),
             { "rpc.aggregate": "team" },
           ),
         [WS_METHODS.teamOverviewActivityPage]: (input) =>

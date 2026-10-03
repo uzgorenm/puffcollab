@@ -9,7 +9,8 @@
  * therefore behaves exactly as before.
  *
  * Admins see every project. Other members see the projects they belong to:
- * the ones they created and the ones an admin added them to.
+ * the ones they created and the ones whose invitation they accepted (see
+ * ProjectInvitations).
  *
  * @module TeamAccess
  */
@@ -176,9 +177,28 @@ export class TeamAccess extends Context.Service<
       memberId: MemberId,
     ) => Effect.Effect<MembersRevokeAccessResult, TeamAccessError>;
 
+    /**
+     * Creates a pending member account for a person invited to a project and
+     * mints their one-time sign-in link. The account stays pending until the
+     * link is redeemed; see ProjectInvitations for what happens if it is not.
+     */
+    readonly addPendingMember: (input: {
+      readonly displayName: string;
+      readonly username?: string | undefined;
+      readonly invitedBy: MemberId;
+    }) => Effect.Effect<
+      { readonly member: Member; readonly credential: MemberCredentialResult },
+      TeamAccessError
+    >;
+    /** Marks a pending account as signed in once its link has been redeemed. */
+    readonly activatePendingMember: (
+      memberId: MemberId,
+    ) => Effect.Effect<void, TeamPersistenceError>;
+
     readonly listProjectMembers: (
       projectId: ProjectId,
     ) => Effect.Effect<ProjectMembersResult, TeamPersistenceError>;
+    /** Internal: invitations and the Scratch project add members; clients cannot. */
     readonly addProjectMember: (input: {
       readonly projectId: ProjectId;
       readonly memberId: MemberId;
@@ -197,6 +217,8 @@ interface MemberRow {
   readonly role: string;
   readonly createdAt: string;
   readonly removedAt: string | null;
+  readonly invitedBy: string | null;
+  readonly inviteLinkId: string | null;
 }
 
 const toMember = (row: MemberRow): Member => ({
@@ -206,7 +228,23 @@ const toMember = (row: MemberRow): Member => ({
   role: row.role === "admin" ? "admin" : "member",
   createdAt: row.createdAt,
   removedAt: row.removedAt,
+  ...(row.invitedBy === null ? {} : { invitedBy: MemberId.make(row.invitedBy) }),
+  ...(row.inviteLinkId === null ? {} : { pending: true }),
 });
+
+const MAX_USERNAME_LENGTH = 64;
+
+/** A username-shaped slug of a display name, e.g. "Ada Lovelace" -> "ada-lovelace". */
+export const usernameFromDisplayName = (displayName: string): string => {
+  const slug = displayName
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/gu, "-")
+    .replace(/^[^a-z0-9]+/u, "")
+    .replace(/-+$/u, "")
+    .slice(0, MAX_USERNAME_LENGTH - 4);
+  return slug === "" ? "member" : slug;
+};
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -227,7 +265,9 @@ const make = Effect.gen(function* () {
         display_name AS "displayName",
         role,
         created_at AS "createdAt",
-        removed_at AS "removedAt"
+        removed_at AS "removedAt",
+        invited_by AS "invitedBy",
+        invite_link_id AS "inviteLinkId"
       FROM team_members
       WHERE member_id = ${memberId}
     `.pipe(
@@ -244,8 +284,20 @@ const make = Effect.gen(function* () {
       ),
     );
 
+  const activatePendingMember: TeamAccess["Service"]["activatePendingMember"] = (memberId) =>
+    sql`
+      UPDATE team_members SET invite_link_id = NULL
+      WHERE member_id = ${memberId} AND invite_link_id IS NOT NULL
+    `.pipe(Effect.asVoid, persistence("activatePendingMember"));
+
+  // A session for a pending account means its sign-in link was redeemed.
   const resolveSessionMember: TeamAccess["Service"]["resolveSessionMember"] = (session) =>
-    requireActiveMember(memberIdForSubject(session.subject));
+    requireActiveMember(memberIdForSubject(session.subject)).pipe(
+      Effect.tap((member) =>
+        member.pending === true ? activatePendingMember(member.memberId) : Effect.void,
+      ),
+      Effect.map(({ pending: _pending, ...member }) => member),
+    );
 
   const roleOf = (memberId: MemberId): Effect.Effect<MemberRole | null, TeamPersistenceError> =>
     findMember(memberId).pipe(
@@ -315,7 +367,9 @@ const make = Effect.gen(function* () {
         display_name AS "displayName",
         role,
         created_at AS "createdAt",
-        removed_at AS "removedAt"
+        removed_at AS "removedAt",
+        invited_by AS "invitedBy",
+        invite_link_id AS "inviteLinkId"
       FROM team_members
       ORDER BY (member_id = ${OWNER_MEMBER_ID}) DESC, created_at ASC, member_id ASC
     `.pipe(
@@ -323,23 +377,30 @@ const make = Effect.gen(function* () {
       persistence("listMembers"),
     );
 
-  const addMember: TeamAccess["Service"]["addMember"] = (input) =>
+  const isUsernameTaken = (username: string) =>
+    sql<{ readonly one: number }>`
+      SELECT 1 AS "one" FROM team_members
+      WHERE username = ${username} AND removed_at IS NULL
+      LIMIT 1
+    `.pipe(
+      Effect.map((rows) => rows.length > 0),
+      persistence("addMember:checkUsername"),
+    );
+
+  const insertMember = (input: {
+    readonly username: string;
+    readonly displayName: string;
+    readonly role: MemberRole;
+    readonly invitedBy: MemberId | null;
+  }) =>
     Effect.gen(function* () {
-      const taken = yield* sql<{ readonly one: number }>`
-        SELECT 1 AS "one" FROM team_members
-        WHERE username = ${input.username} AND removed_at IS NULL
-        LIMIT 1
-      `.pipe(persistence("addMember:checkUsername"));
-      if (taken.length > 0) {
-        return yield* new TeamUsernameTakenError({ username: input.username });
-      }
       const memberId = MemberId.make(
         yield* crypto.randomUUIDv4.pipe(persistence("addMember:memberId")),
       );
       const createdAt = DateTime.formatIso(yield* DateTime.now);
       yield* sql`
-        INSERT INTO team_members (member_id, username, display_name, role, created_at, removed_at)
-        VALUES (${memberId}, ${input.username}, ${input.displayName}, ${input.role}, ${createdAt}, NULL)
+        INSERT INTO team_members (member_id, username, display_name, role, created_at, removed_at, invited_by)
+        VALUES (${memberId}, ${input.username}, ${input.displayName}, ${input.role}, ${createdAt}, NULL, ${input.invitedBy})
       `.pipe(persistence("addMember:insert"));
       return {
         memberId,
@@ -348,7 +409,16 @@ const make = Effect.gen(function* () {
         role: input.role,
         createdAt,
         removedAt: null,
+        ...(input.invitedBy === null ? {} : { invitedBy: input.invitedBy }),
       } satisfies Member;
+    });
+
+  const addMember: TeamAccess["Service"]["addMember"] = (input) =>
+    Effect.gen(function* () {
+      if (yield* isUsernameTaken(input.username)) {
+        return yield* new TeamUsernameTakenError({ username: input.username });
+      }
+      return yield* insertMember({ ...input, invitedBy: null });
     });
 
   const revokeAccessFor = (memberId: MemberId) =>
@@ -386,23 +456,65 @@ const make = Effect.gen(function* () {
       return { ...member, removedAt };
     });
 
+  const mintCredential = (member: Member) =>
+    auth
+      .createPairingLink({
+        subject: memberSubject(member.memberId),
+        scopes: member.role === "admin" ? AuthAdministrativeScopes : AuthStandardClientScopes,
+        label: member.displayName,
+        ttl: MEMBER_CREDENTIAL_TTL,
+      })
+      .pipe(
+        Effect.map(
+          (issued) =>
+            ({
+              id: issued.id,
+              credential: issued.credential,
+              expiresAt: issued.expiresAt,
+            }) satisfies MemberCredentialResult,
+        ),
+        Effect.mapError((cause) => new TeamCredentialError({ cause })),
+      );
+
   const issueMemberCredential: TeamAccess["Service"]["issueMemberCredential"] = (memberId) =>
     Effect.gen(function* () {
       yield* rejectOwner(memberId);
       const member = yield* requireActiveMember(memberId);
-      const issued = yield* auth
-        .createPairingLink({
-          subject: memberSubject(memberId),
-          scopes: member.role === "admin" ? AuthAdministrativeScopes : AuthStandardClientScopes,
-          label: member.displayName,
-          ttl: MEMBER_CREDENTIAL_TTL,
-        })
-        .pipe(Effect.mapError((cause) => new TeamCredentialError({ cause })));
-      return {
-        id: issued.id,
-        credential: issued.credential,
-        expiresAt: issued.expiresAt,
-      } satisfies MemberCredentialResult;
+      const credential = yield* mintCredential(member);
+      // A pending account follows its newest link.
+      if (member.pending === true) {
+        yield* sql`
+          UPDATE team_members SET invite_link_id = ${credential.id} WHERE member_id = ${memberId}
+        `.pipe(persistence("issueMemberCredential:pendingLink"));
+      }
+      return credential;
+    });
+
+  const addPendingMember: TeamAccess["Service"]["addPendingMember"] = (input) =>
+    Effect.gen(function* () {
+      let username = input.username;
+      if (username !== undefined) {
+        if (yield* isUsernameTaken(username)) {
+          return yield* new TeamUsernameTakenError({ username });
+        }
+      } else {
+        const base = usernameFromDisplayName(input.displayName);
+        username = base;
+        for (let suffix = 2; yield* isUsernameTaken(username); suffix += 1) {
+          username = `${base}-${suffix}`;
+        }
+      }
+      const member = yield* insertMember({
+        username,
+        displayName: input.displayName,
+        role: "member",
+        invitedBy: input.invitedBy,
+      });
+      const credential = yield* mintCredential(member);
+      yield* sql`
+        UPDATE team_members SET invite_link_id = ${credential.id} WHERE member_id = ${member.memberId}
+      `.pipe(persistence("addPendingMember:link"));
+      return { member: { ...member, pending: true }, credential };
     });
 
   const revokeMemberAccess: TeamAccess["Service"]["revokeMemberAccess"] = (memberId) =>
@@ -418,19 +530,23 @@ const make = Effect.gen(function* () {
     });
 
   const listProjectMembers: TeamAccess["Service"]["listProjectMembers"] = (projectId) =>
-    sql<{ readonly memberId: string }>`
-      SELECT project_members.member_id AS "memberId"
-      FROM team_project_members AS project_members
-      JOIN team_members AS members ON members.member_id = project_members.member_id
-      WHERE project_members.project_id = ${projectId} AND members.removed_at IS NULL
-      ORDER BY project_members.added_at ASC, project_members.member_id ASC
-    `.pipe(
-      Effect.map((rows) => ({
+    Effect.gen(function* () {
+      const rows = yield* sql<{ readonly memberId: string }>`
+        SELECT project_members.member_id AS "memberId"
+        FROM team_project_members AS project_members
+        JOIN team_members AS members ON members.member_id = project_members.member_id
+        WHERE project_members.project_id = ${projectId} AND members.removed_at IS NULL
+        ORDER BY project_members.added_at ASC, project_members.member_id ASC
+      `;
+      const creators = yield* sql<{ readonly memberId: string }>`
+        SELECT member_id AS "memberId" FROM team_project_creators WHERE project_id = ${projectId}
+      `;
+      return {
         projectId,
         memberIds: rows.map((row) => MemberId.make(row.memberId)),
-      })),
-      persistence("listProjectMembers"),
-    );
+        creatorId: creators[0] === undefined ? null : MemberId.make(creators[0].memberId),
+      } satisfies ProjectMembersResult;
+    }).pipe(persistence("listProjectMembers"));
 
   const addProjectMember: TeamAccess["Service"]["addProjectMember"] = ({ projectId, memberId }) =>
     Effect.gen(function* () {
@@ -469,6 +585,8 @@ const make = Effect.gen(function* () {
     removeMember,
     issueMemberCredential,
     revokeMemberAccess,
+    addPendingMember,
+    activatePendingMember,
     listProjectMembers,
     addProjectMember,
     removeProjectMember,
