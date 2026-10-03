@@ -103,6 +103,7 @@ import IconTrash from "@tabler/icons-react-native/IconTrash";
 import IconTypography from "@tabler/icons-react-native/IconTypography";
 import IconUpload from "@tabler/icons-react-native/IconUpload";
 import IconUserCircle from "@tabler/icons-react-native/IconUserCircle";
+import IconUserPlus from "@tabler/icons-react-native/IconUserPlus";
 import IconUsers from "@tabler/icons-react-native/IconUsers";
 import IconWifiOff from "@tabler/icons-react-native/IconWifiOff";
 import IconWorld from "@tabler/icons-react-native/IconWorld";
@@ -185,6 +186,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   pencil: IconPencil,
   "person.crop.circle": IconUserCircle,
   "person.2": IconUsers,
+  "person.badge.plus": IconUserPlus,
   photo: IconPhoto,
   pin: IconPin,
   "pin.slash": IconPinnedOff,

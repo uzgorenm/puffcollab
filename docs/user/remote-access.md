@@ -220,8 +220,19 @@ themselves; that account stays the owner's.
 Adding and removing members stays on web and desktop; mobile lists them in
 Team overview.
 
-Members see only the projects they created or were added to; use **Projects**
-on a member's row to choose them. Admins see every project. Files, Git actions,
+Members see only the projects they created or joined. Any member can add a
+folder on the host as a project, and anyone in a project can invite people to
+it with **Invite people** (in the thread menu, Team overview, project settings,
+or the command palette; on mobile, from Team overview or a thread's **Team**
+screen). An invitation waits until the invitee accepts it from the banner in
+the sidebar (on mobile, at the top of Home); they can also decline. You can
+invite a teammate, or someone new by name: they get a member account and a
+one-time sign-in link to send them, and the account goes away if the link is
+cancelled or expires unused. Anyone in the project can cancel a pending
+invitation, and each person can have at most 20 waiting. Leave a project from
+the same **People** view; its creator and admins can remove members. Admins
+see every project, invite members from **Projects** on their row in Team
+members, and can see who invited whom. Files, Git actions,
 previews, and pull requests follow the same rule: a member works in the
 checkouts of their projects and can look at, but not change, a teammate's
 shared worktree. Only admins open files or run Git outside the team's

@@ -47,7 +47,8 @@ type TeamOverviewRouteProps = StaticScreenProps<{
 /**
  * The team view of one project (Puff Collab): the shared brief, everyone's
  * focus, a work card per visible thread with its analysis summary, recent
- * activity, and the team roster. Member management stays on web and desktop.
+ * activity, and the team roster. Adding environment members stays on web and desktop;
+ * project invitations open from here.
  */
 export function TeamOverviewRouteScreen(props: TeamOverviewRouteProps) {
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
@@ -152,9 +153,18 @@ export function TeamOverviewRouteScreen(props: TeamOverviewRouteProps) {
                   detail={row.detail}
                 />
               ))}
-              <TeamCardBody divided>
-                <TeamMutedText>Admins add and remove members from web or desktop.</TeamMutedText>
-              </TeamCardBody>
+              <TeamRow
+                divided
+                icon="person.badge.plus"
+                title="Invite people"
+                detail="Who is in this project, invitations, and leaving it."
+                onPress={() =>
+                  navigation.navigate("ProjectPeople", {
+                    environmentId: String(environmentId),
+                    projectId: String(projectId),
+                  })
+                }
+              />
             </SettingsSection>
           </>
         )}

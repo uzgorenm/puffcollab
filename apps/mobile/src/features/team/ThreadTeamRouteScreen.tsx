@@ -152,6 +152,18 @@ export function ThreadTeamRouteScreen(props: ThreadTeamRouteProps) {
                   })
                 }
               />
+              <TeamRow
+                divided
+                icon="person.badge.plus"
+                title="Invite people"
+                detail="Invite teammates or someone new to this project, or leave it."
+                onPress={() =>
+                  navigation.navigate("ProjectPeople", {
+                    environmentId: String(environmentId),
+                    projectId: String(shell.projectId),
+                  })
+                }
+              />
             </SettingsSection>
           </>
         )}

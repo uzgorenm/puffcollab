@@ -49,6 +49,7 @@ import { GitConfirmSheet } from "./features/threads/git/GitConfirmSheet";
 import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
 import { ThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
 import { TeamOverviewRouteScreen } from "./features/team/TeamOverviewRouteScreen";
+import { ProjectPeopleRouteScreen } from "./features/team/ProjectPeopleRouteScreen";
 import { ThreadTeamRouteScreen } from "./features/team/ThreadTeamRouteScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
@@ -687,6 +688,22 @@ const RootStackConfig = createNativeStackNavigator({
       options: {
         ...GLASS_HEADER_OPTIONS,
         title: "Team overview",
+      },
+    }),
+    // Puff Collab: a project's members and invitations.
+    ProjectPeople: createNativeStackScreen({
+      screen: ProjectPeopleRouteScreen,
+      linking: "projects/:environmentId/:projectId/people",
+      options: {
+        gestureEnabled: true,
+        headerShown: false,
+        ...(Platform.OS === "android"
+          ? { presentation: "card" as const }
+          : {
+              ...FORM_SHEET_PRESENTATION_OPTIONS,
+              sheetAllowedDetents: [1],
+              sheetGrabberVisible: true,
+            }),
       },
     }),
     ThreadAttachment: createNativeStackScreen({
