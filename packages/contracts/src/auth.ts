@@ -299,6 +299,8 @@ export class EnvironmentAuthorizationError extends Schema.TaggedError<Environmen
   {
     message: Schema.String,
     requiredScope: AuthEnvironmentScope,
+    // Set when the scope was present but the action also needs a team role.
+    requiredRole: Schema.optional(Schema.Literal("admin")),
   },
 ) {}
 

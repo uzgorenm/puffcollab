@@ -1,4 +1,5 @@
 import { SettingsGroup } from "./SettingsGroup";
+import { AdminOnlySettingsNotice } from "./AdminOnlySettingsNotice";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { useAtomValue } from "@effect/atom-react";
 import { connectionStatusTitle } from "@t3tools/client-runtime/connection";
@@ -409,6 +410,7 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
 
   return (
     <>
+      <AdminOnlySettingsNotice environmentId={effectiveEnvironmentId ?? null} />
       {targetEnvironmentMissing ? (
         <ProviderSettingsPlaceholder
           deviceTabs={deviceTabs}

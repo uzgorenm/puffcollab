@@ -171,7 +171,11 @@ import * as WorkspaceAccess from "./team/WorkspaceAccess.ts";
 import * as TeamOverview from "./team/TeamOverview.ts";
 import * as ProjectInvitations from "./team/ProjectInvitations.ts";
 import * as CooperationService from "./cooperation/CooperationService.ts";
-import { requiredScopeForRpcMethod, requiredScopeForDeviceList } from "./auth/RpcAuthorization.ts";
+import {
+  ADMIN_ONLY_RPC_METHODS,
+  requiredScopeForRpcMethod,
+  requiredScopeForDeviceList,
+} from "./auth/RpcAuthorization.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
@@ -750,26 +754,37 @@ const makeWsRpcLayer = (
         currentSession.scopes.includes(requiredScope)
           ? stream
           : Stream.fail(authorizationError(requiredScope));
+      // Host-wide RPCs (see ADMIN_ONLY_RPC_METHODS) also need the admin role.
+      const adminOnlyError = (method: string) =>
+        ADMIN_ONLY_RPC_METHODS.has(method) && currentMember.role !== "admin"
+          ? new EnvironmentAuthorizationError({
+              message: "Only admins can change this.",
+              requiredScope: requiredScopeForRpcMethod(method),
+              requiredRole: "admin",
+            })
+          : undefined;
+      const authorizeMethodEffect = <A, E, R>(method: string, effect: Effect.Effect<A, E, R>) => {
+        const denied = adminOnlyError(method);
+        return denied
+          ? Effect.fail(denied)
+          : authorizeEffect(requiredScopeForRpcMethod(method), effect);
+      };
+      const authorizeMethodStream = <A, E, R>(method: string, stream: Stream.Stream<A, E, R>) => {
+        const denied = adminOnlyError(method);
+        return denied
+          ? Stream.fail(denied)
+          : authorizeStream(requiredScopeForRpcMethod(method), stream);
+      };
       const observeRpcEffect = <A, E, R>(
         method: string,
         effect: Effect.Effect<A, E, R>,
         traceAttributes?: Readonly<Record<string, unknown>>,
-      ) =>
-        instrumentRpcEffect(
-          method,
-          authorizeEffect(requiredScopeForRpcMethod(method), effect),
-          traceAttributes,
-        );
+      ) => instrumentRpcEffect(method, authorizeMethodEffect(method, effect), traceAttributes);
       const observeRpcStream = <A, E, R>(
         method: string,
         stream: Stream.Stream<A, E, R>,
         traceAttributes?: Readonly<Record<string, unknown>>,
-      ) =>
-        instrumentRpcStream(
-          method,
-          authorizeStream(requiredScopeForRpcMethod(method), stream),
-          traceAttributes,
-        );
+      ) => instrumentRpcStream(method, authorizeMethodStream(method, stream), traceAttributes);
       const observeRpcStreamEffect = <A, StreamError, StreamContext, EffectError, EffectContext>(
         method: string,
         effect: Effect.Effect<
@@ -779,11 +794,7 @@ const makeWsRpcLayer = (
         >,
         traceAttributes?: Readonly<Record<string, unknown>>,
       ) =>
-        instrumentRpcStreamEffect(
-          method,
-          authorizeEffect(requiredScopeForRpcMethod(method), effect),
-          traceAttributes,
-        );
+        instrumentRpcStreamEffect(method, authorizeMethodEffect(method, effect), traceAttributes);
       const toDispatchCommandError = (cause: unknown, fallbackMessage: string) =>
         isOrchestrationDispatchCommandError(cause)
           ? cause
@@ -3130,10 +3141,22 @@ const makeWsRpcLayer = (
             providerAuth.complete(input, currentSessionId),
             { "rpc.aggregate": "provider" },
           ),
-        [WS_METHODS.chatGptReconnectProfile]: (input) => providerAuth.reconnectProfile(input),
-        [WS_METHODS.chatGptImportProfile]: (input) => providerAuth.importProfile(input),
+        [WS_METHODS.chatGptReconnectProfile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.chatGptReconnectProfile,
+            providerAuth.reconnectProfile(input),
+            { "rpc.aggregate": "provider" },
+          ),
+        [WS_METHODS.chatGptImportProfile]: (input) =>
+          observeRpcEffect(WS_METHODS.chatGptImportProfile, providerAuth.importProfile(input), {
+            "rpc.aggregate": "provider",
+          }),
         [WS_METHODS.chatGptHandoffSubscribe]: (input) =>
-          subscribeChatGptHandoff(input, currentSessionId),
+          observeRpcStream(
+            WS_METHODS.chatGptHandoffSubscribe,
+            subscribeChatGptHandoff(input, currentSessionId),
+            { "rpc.aggregate": "provider" },
+          ),
         [WS_METHODS.codexAuthCallbackSubscribe]: (input) =>
           observeRpcStream(
             WS_METHODS.codexAuthCallbackSubscribe,

@@ -210,6 +210,36 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeBackgroundPolicy]: AuthOrchestrationReadScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
+/**
+ * RPCs that change the whole host rather than a project or thread: environment
+ * settings, provider logins and installs, keybindings, and server updates. Team
+ * members need the admin role for these on top of the scope above; reads and
+ * status streams stay open so every member's settings UI still renders.
+ */
+export const ADMIN_ONLY_RPC_METHODS: ReadonlySet<string> = new Set<WsRpcMethod>([
+  WS_METHODS.serverUpdateSettings,
+  WS_METHODS.serverUpdateProvider,
+  WS_METHODS.providerAuthStart,
+  WS_METHODS.providerAuthRespond,
+  WS_METHODS.providerAuthComplete,
+  WS_METHODS.providerAuthCancel,
+  WS_METHODS.providerAuthLogout,
+  WS_METHODS.chatGptReconnectProfile,
+  WS_METHODS.chatGptImportProfile,
+  WS_METHODS.chatGptHandoffSubscribe,
+  WS_METHODS.codexAuthCallbackSubscribe,
+  WS_METHODS.providerConsumeResetCredit,
+  WS_METHODS.providerInstallStart,
+  WS_METHODS.providerInstallCancel,
+  WS_METHODS.providerInstallRemove,
+  WS_METHODS.serverUpsertKeybinding,
+  WS_METHODS.serverRemoveKeybinding,
+  WS_METHODS.serverUpdateServer,
+  WS_METHODS.serverUpdateServerWithProgress,
+  WS_METHODS.serverCommitDesktopUpdate,
+  WS_METHODS.serverSignalProcess,
+]);
+
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {
   if (!Object.hasOwn(RPC_REQUIRED_SCOPES, method)) {
     throw new Error(`RPC method ${method} has no declared authorization scope.`);

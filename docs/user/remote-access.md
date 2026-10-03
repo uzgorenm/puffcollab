@@ -236,7 +236,9 @@ members, and can see who invited whom. Files, Git actions,
 previews, and pull requests follow the same rule: a member works in the
 checkouts of their projects and can look at, but not change, a teammate's
 shared worktree. Only admins open files or run Git outside the team's
-projects. These rules organize the team; they are not a sandbox. Every agent
+projects, and only admins change host-wide settings: provider sign-ins and
+installs, environment settings, keybindings, and server updates. Members use the
+providers and models an admin has set up. These rules organize the team; they are not a sandbox. Every agent
 runs as the host's user account, so only invite people you would trust with
 that account. Messages written by someone else show their name above the
 message.

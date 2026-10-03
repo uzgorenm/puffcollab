@@ -13858,6 +13858,48 @@ it.layer(NodeServices.layer)("team members", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("keeps host-wide settings, provider logins, and keybindings admin-only", () =>
+    Effect.gen(function* () {
+      const rule: KeybindingRule = { command: "terminal.toggle", key: "ctrl+k" };
+      yield* buildAppUnderTest({
+        layers: { keybindings: { removeKeybindingRule: () => Effect.succeed([]) } },
+      });
+      const ownerWsUrl = yield* getWsServerUrl("/ws");
+      const { memberWsUrl } = yield* connectAsNewMember(ownerWsUrl, "grace");
+
+      const keybindingError = yield* Effect.flip(
+        Effect.scoped(
+          withWsRpcClient(memberWsUrl, (client) => client[WS_METHODS.serverRemoveKeybinding](rule)),
+        ),
+      );
+      assert.equal(keybindingError._tag, "EnvironmentAuthorizationError");
+      assert.equal(
+        keybindingError._tag === "EnvironmentAuthorizationError"
+          ? keybindingError.requiredRole
+          : undefined,
+        "admin",
+      );
+
+      // Previously unchecked: reconnecting the host's ChatGPT profile.
+      const reconnectError = yield* Effect.flip(
+        Effect.scoped(
+          withWsRpcClient(memberWsUrl, (client) =>
+            client[WS_METHODS.chatGptReconnectProfile]({
+              instanceId: ProviderInstanceId.make("codex"),
+              methodId: "chatgpt",
+            }),
+          ),
+        ),
+      );
+      assert.equal(reconnectError._tag, "EnvironmentAuthorizationError");
+
+      const ownerResponse = yield* Effect.scoped(
+        withWsRpcClient(ownerWsUrl, (client) => client[WS_METHODS.serverRemoveKeybinding](rule)),
+      );
+      assert.deepEqual(ownerResponse.issues, []);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("removing a member revokes their sessions", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
