@@ -22,8 +22,8 @@
  *
  * @module HubSync
  */
-import { createHash, randomBytes, randomUUID } from "node:crypto";
-import * as OS from "node:os";
+import * as NodeCrypto from "node:crypto";
+import * as NodeOS from "node:os";
 
 import {
   CommandId,
@@ -62,7 +62,6 @@ import {
   type HubThreadId,
   type HubThreadLink,
   type HubThreadSummary,
-  type HubThreadSummaryFields,
   hubProtocolMismatchSide,
   hubRepositoryKey,
   hubThreadIdOf,
@@ -299,7 +298,7 @@ const make = Effect.gen(function* () {
   const secrets = yield* ServerSecretStore.ServerSecretStore;
   const sql = yield* SqlClient.SqlClient;
   const store = yield* makeHubStore;
-  const homeDirs = [OS.homedir()].filter((dir) => dir.length > 1);
+  const homeDirs = [NodeOS.homedir()].filter((dir) => dir.length > 1);
 
   const initialLink = yield* store.getLink.pipe(Effect.orDie);
   const initialProjects = yield* store.listProjectLinks.pipe(Effect.orDie);
@@ -409,7 +408,7 @@ const make = Effect.gen(function* () {
   const forgetCredential = secrets.remove(HUB_CREDENTIAL_SECRET).pipe(Effect.ignore);
 
   const nowIso = DateTime.now.pipe(Effect.map(DateTime.formatIso));
-  const newCommandId = Effect.sync(() => CommandId.make(`hub:${randomUUID()}`));
+  const newCommandId = Effect.sync(() => CommandId.make(`hub:${NodeCrypto.randomUUID()}`));
 
   const persistence = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     effect.pipe(
@@ -588,6 +587,7 @@ const make = Effect.gen(function* () {
         },
       });
       yield* refreshSyncState(threadId);
+      yield* signalOutbox;
     });
 
   /** Ends a thread's hub stream: the hub drops its mirror on this body. */
@@ -613,6 +613,7 @@ const make = Effect.gen(function* () {
         ...(cursor !== undefined ? { cursor } : {}),
       });
       yield* setHubLink(published.threadId, null);
+      yield* signalOutbox;
     });
 
   const privateBody = (threadId: ThreadId, at: string): HubThreadEventBody => ({
@@ -1197,7 +1198,7 @@ const make = Effect.gen(function* () {
           bytes += size;
           batch.push(row);
         }
-        const requestId = `pub-${randomUUID()}`;
+        const requestId = `pub-${NodeCrypto.randomUUID()}`;
         current.inFlight.set(threadId, { requestId, count: batch.length });
         current.publishRequests.set(requestId, threadId);
         unacked += batch.length;
@@ -1663,7 +1664,7 @@ const make = Effect.gen(function* () {
       if (current === null || !current.welcomed) {
         return yield* hubError("offline", "The team hub is not connected.");
       }
-      const requestId = `req-${randomUUID()}`;
+      const requestId = `req-${NodeCrypto.randomUUID()}`;
       const deferred = yield* Deferred.make<HubReply>();
       current.pending.set(requestId, deferred);
       yield* send(current, build(requestId));
@@ -1792,9 +1793,11 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* requireHubUrl;
       yield* cancelPendingLink;
-      const codeVerifier = toBase64Url(randomBytes(32));
-      const codeChallenge = toBase64Url(createHash("sha256").update(codeVerifier).digest());
-      const environmentLabel = (OS.hostname() || "Puff Collab").slice(0, 80);
+      const codeVerifier = toBase64Url(NodeCrypto.randomBytes(32));
+      const codeChallenge = toBase64Url(
+        NodeCrypto.createHash("sha256").update(codeVerifier).digest(),
+      );
+      const environmentLabel = (NodeOS.hostname() || "Puff Collab").slice(0, 80);
       const response = yield* http({
         method: "POST",
         path: "/v1/link/requests",
@@ -2015,7 +2018,7 @@ const make = Effect.gen(function* () {
         Stream.runHead,
         Effect.timeoutOrElse({
           duration: REQUEST_TIMEOUT,
-          orElse: () => Effect.succeed(Option.none()),
+          orElse: () => Effect.succeedNone,
         }),
       );
       if (Option.isNone(invitation)) {
