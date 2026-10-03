@@ -3,11 +3,14 @@ import { expect, it } from "@effect/vitest";
 import {
   CommandId,
   EventId,
-  MemberId,
+  HubAccountId,
+  type HubAnalysisSummary,
+  type HubAwarenessItem,
+  type HubThreadCooperation,
+  HubThreadId,
   MessageId,
   type OrchestrationCommand,
   type OrchestrationThreadShell,
-  OWNER_MEMBER_ID,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
@@ -15,23 +18,30 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
+import * as HubSync from "../hub/HubSync.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { OrchestrationEventStoreLive } from "../persistence/Layers/OrchestrationEventStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { OrchestrationEventStore } from "../persistence/Services/OrchestrationEventStore.ts";
-import * as TeamAccess from "../team/TeamAccess.ts";
 import type { CooperationAnalystOutput } from "../textGeneration/CooperationAnalysisPrompt.ts";
 import { CooperationAnalyst, type CooperationAnalystError } from "./CooperationAnalyst.ts";
 import { CooperationService, layer as cooperationServiceLayer } from "./CooperationService.ts";
 
 const PROJECT = ProjectId.make("project-1");
+/** This server's own shared thread, published to the hub. */
 const THREAD_A = ThreadId.make("thread-a");
-const THREAD_B = ThreadId.make("thread-b");
-const ADA = MemberId.make("ada");
-const OUTSIDER = MemberId.make("outsider");
+const HUB_A = HubThreadId.make("link-me:thread-a");
+/** A second thread of this server's own. */
+const THREAD_C = ThreadId.make("thread-c");
+/** Ada's thread, mirrored here from the team hub. */
+const HUB_B = HubThreadId.make("link-ada:thread-b");
+const THREAD_B = ThreadId.make(`hub:${HUB_B}`);
+const ADA = HubAccountId.make("acct-ada");
+const NOW = "2026-10-01T00:00:00.000Z";
 
 function shell(
   id: ThreadId,
@@ -48,8 +58,8 @@ function shell(
     branch: null,
     worktreePath: null,
     latestTurn: null,
-    createdAt: "2026-10-01T00:00:00.000Z",
-    updatedAt: "2026-10-01T00:00:00.000Z",
+    createdAt: NOW,
+    updatedAt: NOW,
     archivedAt: null,
     settledOverride: null,
     settledAt: null,
@@ -63,14 +73,41 @@ function shell(
   };
 }
 
-/** A fake text-generation layer: records prompts and answers from `respond`. */
+const mirrorShell = shell(THREAD_B, {
+  hub: {
+    threadId: HUB_B,
+    ownerId: ADA,
+    ownerLogin: "ada",
+    ownerDisplayName: "Ada",
+    remote: true,
+    syncState: "synced",
+  },
+});
+
+/** Fakes for the hub, the analyst and the engine; records what reaches each. */
 function makeHarness() {
   const shells = new Map<ThreadId, OrchestrationThreadShell>([
     [THREAD_A, shell(THREAD_A)],
-    [THREAD_B, shell(THREAD_B, { createdBy: ADA })],
+    [THREAD_B, mirrorShell],
+    [THREAD_C, shell(THREAD_C)],
   ]);
   const prompts: string[] = [];
-  const dispatched: Array<{ command: OrchestrationCommand; actor: MemberId | undefined }> = [];
+  const dispatched: Array<OrchestrationCommand> = [];
+  const hub = {
+    /** Ada's published consent on her thread. */
+    mirrorConsent: {
+      featureTopic: "billing",
+      analysisEnabled: true,
+      textEnabled: false,
+      awarenessNotify: true,
+    } as HubThreadCooperation | null,
+    published: new Map<ThreadId, HubThreadId>([[THREAD_A, HUB_A]]),
+    refreshed: [] as ThreadId[],
+    posts: [] as Array<{
+      summaries: ReadonlyArray<HubAnalysisSummary>;
+      awareness: ReadonlyArray<HubAwarenessItem>;
+    }>,
+  };
   const analyst = {
     respond: (_prompt: string): Effect.Effect<CooperationAnalystOutput, CooperationAnalystError> =>
       Effect.succeed({ summaries: [], notes: [] }),
@@ -84,14 +121,38 @@ function makeHarness() {
             return Effect.succeed(found === undefined ? Option.none() : Option.some(found));
           },
         }),
-        Layer.mock(TeamAccess.TeamAccess)({
-          canSeeThread: () => Effect.succeed(true),
-          isProjectMember: (memberId) => Effect.succeed(memberId !== OUTSIDER),
+        Layer.mock(HubSync.HubSync)({
+          mirrorInfo: (threadId) =>
+            Effect.succeed(
+              threadId === THREAD_B
+                ? {
+                    hubThreadId: HUB_B,
+                    ownerId: ADA,
+                    cooperation: hub.mirrorConsent,
+                    analysis: null,
+                  }
+                : null,
+            ),
+          consentingMirrors: (_projectId, featureTopic) =>
+            Effect.succeed(
+              hub.mirrorConsent?.analysisEnabled === true &&
+                hub.mirrorConsent.featureTopic === featureTopic &&
+                shells.get(THREAD_B)?.visibility === "shared"
+                ? [THREAD_B]
+                : [],
+            ),
+          publishedThreadId: (threadId) => Effect.succeed(hub.published.get(threadId) ?? null),
+          refreshSummary: (threadId) => Effect.sync(() => void hub.refreshed.push(threadId)),
+          postAnalysis: (input) =>
+            Effect.sync(() => {
+              hub.posts.push({ summaries: input.summaries, awareness: input.awareness });
+            }),
+          incomingAwareness: Stream.empty,
         }),
         Layer.mock(OrchestrationEngineService)({
-          dispatch: (command, options) =>
+          dispatch: (command) =>
             Effect.sync(() => {
-              dispatched.push({ command, actor: options?.actor });
+              dispatched.push(command);
               return { sequence: 0 };
             }),
         }),
@@ -108,11 +169,12 @@ function makeHarness() {
     Layer.provideMerge(OrchestrationEventStoreLive),
     Layer.provideMerge(SqlitePersistenceMemory),
   );
-  return { layer, shells, prompts, dispatched, analyst };
+  return { layer, shells, prompts, dispatched, analyst, hub };
 }
 
 let eventCounter = 0;
-const appendMessage = (threadId: ThreadId, text: string, role: "user" | "assistant" = "user") =>
+/** A message event; mirror events carry their place in the hub stream. */
+const appendMessage = (threadId: ThreadId, text: string, hubSeq?: number) =>
   Effect.gen(function* () {
     const store = yield* OrchestrationEventStore;
     eventCounter += 1;
@@ -121,33 +183,32 @@ const appendMessage = (threadId: ThreadId, text: string, role: "user" | "assista
       aggregateKind: "thread",
       aggregateId: threadId,
       type: "thread.message-sent",
-      occurredAt: "2026-10-01T00:00:00.000Z",
+      occurredAt: NOW,
       commandId: CommandId.make(`command-${eventCounter}`),
       causationEventId: null,
       correlationId: null,
-      metadata: {},
+      metadata: hubSeq === undefined ? {} : { hubOrigin: { generation: 1, seq: hubSeq } },
       payload: {
         threadId,
         messageId: MessageId.make(`message-${eventCounter}`),
-        role,
+        role: "user",
         text,
         turnId: null,
         streaming: false,
-        createdAt: "2026-10-01T00:00:00.000Z",
-        updatedAt: "2026-10-01T00:00:00.000Z",
+        createdAt: NOW,
+        updatedAt: NOW,
       },
     });
   });
 
 const consent = (
-  memberId: MemberId,
   threadId: ThreadId,
   overrides: { textEnabled?: boolean; awarenessNotify?: boolean; analysisEnabled?: boolean } = {},
 ) =>
   Effect.gen(function* () {
     const cooperation = yield* CooperationService;
-    const current = yield* cooperation.getThreadState(memberId, threadId);
-    return yield* cooperation.updateSettings(memberId, {
+    const current = yield* cooperation.getThreadState(threadId);
+    return yield* cooperation.updateSettings({
       threadId,
       expectedVersion: current.settings.version,
       featureTopic: "billing",
@@ -157,6 +218,7 @@ const consent = (
     });
   });
 
+/** A is this server's thread, B Ada's mirror. */
 const goodOutput: CooperationAnalystOutput = {
   summaries: [
     { thread: "A", summary: "Owner is reworking invoices.", evidence: ["A1"] },
@@ -173,30 +235,27 @@ const goodOutput: CooperationAnalystOutput = {
 };
 
 it.layer(NodeServices.layer)("CooperationService", (it) => {
-  it.effect("starts with every switch off and lets only the owner change it", () => {
+  it.effect("starts with every switch off; only this server's own threads are editable", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
       const cooperation = yield* CooperationService;
-      const asAda = yield* cooperation.getThreadState(ADA, THREAD_A);
-      expect(asAda.ownerMemberId).toBe(OWNER_MEMBER_ID);
-      expect(asAda.canEdit).toBe(false);
-      expect(asAda.settings).toMatchObject({
+      const own = yield* cooperation.getThreadState(THREAD_A);
+      expect(own.canEdit).toBe(true);
+      expect(own.settings).toMatchObject({
         version: 0,
         analysisEnabled: false,
         textEnabled: false,
         awarenessNotify: false,
       });
-      expect(asAda.summary).toBeNull();
+      expect(own.summary).toBeNull();
 
-      const forbidden = yield* Effect.flip(consent(ADA, THREAD_A));
-      expect(forbidden.reason).toBe("forbidden");
-
-      // Threads without a creator belong to the environment owner.
-      const updated = yield* consent(OWNER_MEMBER_ID, THREAD_A, { textEnabled: true });
+      const updated = yield* consent(THREAD_A, { textEnabled: true });
       expect(updated).toMatchObject({ version: 1, analysisEnabled: true, textEnabled: true });
+      // Teammates learn about consent from the thread's hub summary.
+      expect(harness.hub.refreshed).toEqual([THREAD_A]);
 
       // Turning analysis off also turns off what depends on it.
-      const off = yield* consent(OWNER_MEMBER_ID, THREAD_A, { analysisEnabled: false });
+      const off = yield* consent(THREAD_A, { analysisEnabled: false });
       expect(off).toMatchObject({
         version: 2,
         analysisEnabled: false,
@@ -205,7 +264,7 @@ it.layer(NodeServices.layer)("CooperationService", (it) => {
       });
 
       const stale = yield* Effect.flip(
-        cooperation.updateSettings(OWNER_MEMBER_ID, {
+        cooperation.updateSettings({
           threadId: THREAD_A,
           expectedVersion: 1,
           featureTopic: "billing",
@@ -215,61 +274,162 @@ it.layer(NodeServices.layer)("CooperationService", (it) => {
         }),
       );
       expect(stale.reason).toBe("conflict");
+
+      // Ada's mirror shows the consent she published, read-only.
+      const mirror = yield* cooperation.getThreadState(THREAD_B);
+      expect(mirror.canEdit).toBe(false);
+      expect(mirror.settings).toMatchObject({ featureTopic: "billing", analysisEnabled: true });
+      const forbidden = yield* Effect.flip(consent(THREAD_B));
+      expect(forbidden.reason).toBe("forbidden");
     }).pipe(Effect.provide(harness.layer));
   });
 
-  it.effect("analyzes consented shared threads and delivers notes only to the target owner", () => {
+  it.effect("exports a teammate's mirror under her consent and posts results to the hub", () => {
     const harness = makeHarness();
     harness.analyst.respond = () => Effect.succeed(goodOutput);
     return Effect.gen(function* () {
       const cooperation = yield* CooperationService;
-      const sourceEvent = yield* appendMessage(THREAD_A, "rewrite invoices with token=abc123");
-      const targetEvent = yield* appendMessage(THREAD_B, "ada private text");
-      yield* consent(OWNER_MEMBER_ID, THREAD_A, { textEnabled: true });
-      yield* consent(ADA, THREAD_B, { textEnabled: false });
+      yield* appendMessage(THREAD_A, "rewrite invoices with token=abc123");
+      yield* appendMessage(THREAD_B, "ada private text", 7);
+      yield* consent(THREAD_A, { textEnabled: true });
 
-      expect(yield* cooperation.requestAnalysis(OWNER_MEMBER_ID, THREAD_A)).toBe(1);
+      expect(yield* cooperation.requestAnalysis(THREAD_A)).toBe(1);
 
       // Text permission is per thread, and secrets never leave the thread.
       const prompt = harness.prompts[0]!;
       expect(prompt).toContain("rewrite invoices");
       expect(prompt).not.toContain("abc123");
       expect(prompt).not.toContain("ada private text");
-      // No related-thread link between the two, so their relationship is unknown.
       expect(prompt).toContain('"relationship":"unspecified"');
 
-      expect(yield* cooperation.latestSummaryForThread(THREAD_B)).toMatchObject({
-        summary: "Ada is adding refunds.",
+      // This server's summary is kept and posted; Ada's thread gets hers from her own run.
+      expect(yield* cooperation.latestSummaryForThread(THREAD_A)).toMatchObject({
+        summary: "Owner is reworking invoices.",
       });
-      expect((yield* cooperation.getInbox(OWNER_MEMBER_ID)).items).toEqual([]);
-      const inbox = yield* cooperation.getInbox(ADA);
-      expect(inbox.items).toHaveLength(1);
-      expect(inbox.items[0]).toMatchObject({
-        kind: "note",
-        sourceThreadId: THREAD_A,
-        targetThreadId: THREAD_B,
-        sourceThreadTitle: "Title thread-a",
-        state: "pending",
-        citations: [
-          { threadId: THREAD_A, eventId: sourceEvent.eventId, sequence: sourceEvent.sequence },
-          { threadId: THREAD_B, eventId: targetEvent.eventId, sequence: targetEvent.sequence },
+      expect(yield* cooperation.latestSummaryForThread(THREAD_B)).toBeNull();
+      expect(harness.hub.posts).toHaveLength(1);
+      const [post] = harness.hub.posts;
+      expect(post!.summaries).toEqual([
+        { threadId: HUB_A, summary: "Owner is reworking invoices.", updatedAt: expect.any(String) },
+      ]);
+      // The note for Ada travels to the hub, citing her events by hub position.
+      expect(post!.awareness).toEqual([
+        expect.objectContaining({
+          kind: "note",
+          sourceThreadId: HUB_A,
+          sourceThreadTitle: "Title thread-a",
+          targetThreadId: HUB_B,
+          text: "Thread A reworked the invoice table.",
+          citations: [{ threadId: HUB_B, generation: 1, seq: 7 }],
+        }),
+      ]);
+      expect((yield* cooperation.getInbox).items).toEqual([]);
+      expect(harness.dispatched).toEqual([]);
+    }).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect("keeps notes for this server's own threads in the local inbox", () => {
+    const harness = makeHarness();
+    harness.analyst.respond = () =>
+      Effect.succeed({
+        ...goodOutput,
+        notes: [
+          { to: "A", kind: "note", text: "Ada added refunds.", evidence: ["B1"] },
+          {
+            to: "A",
+            kind: "proposal",
+            text: "Reuse the refund table from Ada's thread.",
+            evidence: ["B1"],
+          },
         ],
       });
+    return Effect.gen(function* () {
+      const cooperation = yield* CooperationService;
+      yield* appendMessage(THREAD_A, "a");
+      const mirrorEvent = yield* appendMessage(THREAD_B, "b", 3);
+      yield* consent(THREAD_A);
+      yield* cooperation.analyzeThread(THREAD_A, "manual");
 
-      // Nothing was sent to any thread: a note is not a message.
-      expect(harness.dispatched).toEqual([]);
-      const admitted = yield* cooperation.resolveItem(ADA, {
-        itemId: inbox.items[0]!.itemId,
-        action: "admit",
+      expect(harness.hub.posts[0]?.awareness).toEqual([]);
+      const inbox = (yield* cooperation.getInbox).items;
+      expect(inbox.map((item) => item.kind).toSorted()).toEqual(["note", "proposal"]);
+      expect(inbox[0]).toMatchObject({
+        sourceThreadId: THREAD_B,
+        targetThreadId: THREAD_A,
+        citations: [
+          { threadId: THREAD_B, eventId: mirrorEvent.eventId, sequence: mirrorEvent.sequence },
+        ],
       });
-      expect(admitted.state).toBe("admitted");
-      expect(harness.dispatched).toEqual([]);
-      expect((yield* cooperation.getInbox(ADA)).items).toEqual([]);
+      const note = inbox.find((item) => item.kind === "note")!;
+      const proposal = inbox.find((item) => item.kind === "proposal")!;
 
+      // Admitting a note sends nothing.
+      expect((yield* cooperation.resolveItem({ itemId: note.itemId, action: "admit" })).state).toBe(
+        "admitted",
+      );
+      expect(harness.dispatched).toEqual([]);
       const again = yield* Effect.flip(
-        cooperation.resolveItem(ADA, { itemId: admitted.itemId, action: "dismiss" }),
+        cooperation.resolveItem({ itemId: note.itemId, action: "dismiss" }),
       );
       expect(again.reason).toBe("conflict");
+
+      const wrongAction = yield* Effect.flip(
+        cooperation.resolveItem({ itemId: proposal.itemId, action: "admit" }),
+      );
+      expect(wrongAction.reason).toBe("invalid");
+      yield* cooperation.resolveItem({ itemId: proposal.itemId, action: "approve" });
+      expect(harness.dispatched).toEqual([
+        expect.objectContaining({
+          type: "thread.turn.start",
+          threadId: THREAD_A,
+          message: expect.objectContaining({ text: "Reuse the refund table from Ada's thread." }),
+        }),
+      ]);
+    }).pipe(Effect.provide(harness.layer));
+  });
+
+  it.effect("files notes the hub delivers for this server's threads, once", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const cooperation = yield* CooperationService;
+      const mirrorEvent = yield* appendMessage(THREAD_B, "b", 4);
+      yield* consent(THREAD_A);
+      const item: HubAwarenessItem = {
+        itemId: "item-1",
+        kind: "note",
+        sourceThreadId: HUB_B,
+        sourceThreadTitle: "Ada's thread",
+        targetThreadId: HUB_A,
+        text: "Ada changed the refund API.",
+        citations: [{ threadId: HUB_B, generation: 1, seq: 4 }],
+        createdAt: NOW,
+      };
+      // A note for a thread that is not this server's is ignored.
+      const foreign = { ...item, itemId: "item-2", targetThreadId: HubThreadId.make("link-x:t") };
+      yield* cooperation.admitHubAwareness([item, foreign]);
+      yield* cooperation.admitHubAwareness([item]);
+      const inbox = (yield* cooperation.getInbox).items;
+      expect(inbox).toEqual([
+        expect.objectContaining({
+          kind: "note",
+          sourceThreadId: THREAD_B,
+          sourceThreadTitle: `Title ${THREAD_B}`,
+          targetThreadId: THREAD_A,
+          text: "Ada changed the refund API.",
+          citations: [
+            { threadId: THREAD_B, eventId: mirrorEvent.eventId, sequence: mirrorEvent.sequence },
+          ],
+        }),
+      ]);
+      yield* cooperation.resolveItem({ itemId: inbox[0]!.itemId, action: "dismiss" });
+      // Delivered again later: a decided note stays decided.
+      yield* cooperation.admitHubAwareness([item]);
+      expect((yield* cooperation.getInbox).items).toEqual([]);
+
+      // With notifications off, nothing is filed.
+      yield* consent(THREAD_A, { awarenessNotify: false });
+      yield* cooperation.admitHubAwareness([{ ...item, itemId: "item-3" }]);
+      expect((yield* cooperation.getInbox).items).toEqual([]);
     }).pipe(Effect.provide(harness.layer));
   });
 
@@ -279,13 +439,12 @@ it.layer(NodeServices.layer)("CooperationService", (it) => {
       const cooperation = yield* CooperationService;
       const sql = yield* SqlClient.SqlClient;
       yield* appendMessage(THREAD_A, "a");
-      yield* appendMessage(THREAD_B, "b");
-      yield* consent(OWNER_MEMBER_ID, THREAD_A);
-      yield* consent(ADA, THREAD_B);
+      yield* appendMessage(THREAD_B, "b", 1);
+      yield* consent(THREAD_A);
       // Ada linked her thread to A; the link counts in either direction.
       yield* sql`
         INSERT INTO projection_thread_related_links (thread_id, related_thread_id, relationship, linked_at)
-        VALUES (${THREAD_B}, ${THREAD_A}, 'alternative', '2026-10-01T00:00:00.000Z')
+        VALUES (${THREAD_B}, ${THREAD_A}, 'alternative', ${NOW})
       `;
 
       yield* cooperation.analyzeThread(THREAD_A, "manual");
@@ -296,29 +455,26 @@ it.layer(NodeServices.layer)("CooperationService", (it) => {
 
   it.effect("rejects a run whose consent changed while the analyst was working", () => {
     const harness = makeHarness();
+    harness.analyst.respond = () =>
+      Effect.sync(() => {
+        harness.hub.mirrorConsent = { ...harness.hub.mirrorConsent!, textEnabled: true };
+        return goodOutput;
+      });
     return Effect.gen(function* () {
       const cooperation = yield* CooperationService;
       yield* appendMessage(THREAD_A, "a");
-      yield* appendMessage(THREAD_B, "b");
-      yield* consent(OWNER_MEMBER_ID, THREAD_A);
-      yield* consent(ADA, THREAD_B);
-      const services = yield* Effect.context<CooperationService>();
-      harness.analyst.respond = () =>
-        consent(ADA, THREAD_B, { textEnabled: true }).pipe(
-          Effect.provide(services),
-          Effect.orDie,
-          Effect.as(goodOutput),
-        );
+      yield* appendMessage(THREAD_B, "b", 1);
+      yield* consent(THREAD_A);
 
       yield* cooperation.analyzeThread(THREAD_A, "manual");
 
-      const state = yield* cooperation.getThreadState(ADA, THREAD_B);
+      const state = yield* cooperation.getThreadState(THREAD_A);
       expect(state.lastRun).toMatchObject({
         state: "rejected",
         reason: "consent changed during analysis",
       });
       expect(state.summary).toBeNull();
-      expect((yield* cooperation.getInbox(ADA)).items).toEqual([]);
+      expect(harness.hub.posts).toEqual([{ summaries: [], awareness: [] }]);
     }).pipe(Effect.provide(harness.layer));
   });
 
@@ -332,101 +488,79 @@ it.layer(NodeServices.layer)("CooperationService", (it) => {
     return Effect.gen(function* () {
       const cooperation = yield* CooperationService;
       yield* appendMessage(THREAD_A, "a");
-      yield* appendMessage(THREAD_B, "b");
-      yield* consent(OWNER_MEMBER_ID, THREAD_A);
-      yield* consent(ADA, THREAD_B);
+      yield* appendMessage(THREAD_B, "b", 1);
+      yield* consent(THREAD_A);
 
       yield* cooperation.analyzeThread(THREAD_A, "turn-completed");
 
-      const state = yield* cooperation.getThreadState(OWNER_MEMBER_ID, THREAD_A);
+      const state = yield* cooperation.getThreadState(THREAD_A);
       expect(state.lastRun).toMatchObject({
         state: "rejected",
         reason: "note cites an event that was not exported",
       });
       expect(state.summary).toBeNull();
-      expect((yield* cooperation.getInbox(ADA)).items).toEqual([]);
     }).pipe(Effect.provide(harness.layer));
   });
 
-  it.effect("never exports private threads or threads without consent", () => {
+  it.effect("never exports private threads, threads without consent, or from a mirror", () => {
     const harness = makeHarness();
-    harness.shells.set(THREAD_B, shell(THREAD_B, { createdBy: ADA, visibility: "private" }));
+    harness.hub.mirrorConsent = null;
+    harness.shells.set(THREAD_C, shell(THREAD_C, { visibility: "private" }));
     return Effect.gen(function* () {
       const cooperation = yield* CooperationService;
       yield* appendMessage(THREAD_A, "a");
-      yield* appendMessage(THREAD_B, "b");
-      yield* consent(OWNER_MEMBER_ID, THREAD_A);
+      yield* appendMessage(THREAD_B, "b", 1);
+      yield* appendMessage(THREAD_C, "c");
+      yield* consent(THREAD_A);
+      yield* consent(THREAD_C);
+      // Ada never opted in and C is private.
       expect(yield* cooperation.analyzeThread(THREAD_A, "manual")).toBe(0);
-      yield* consent(ADA, THREAD_B);
-      expect(yield* cooperation.analyzeThread(THREAD_A, "manual")).toBe(0);
+      // A mirror is analyzed on its owner's machine, never here.
+      harness.hub.mirrorConsent = {
+        featureTopic: "billing",
+        analysisEnabled: true,
+        textEnabled: true,
+        awarenessNotify: true,
+      };
+      expect(yield* cooperation.analyzeThread(THREAD_B, "manual")).toBe(0);
       expect(harness.prompts).toEqual([]);
     }).pipe(Effect.provide(harness.layer));
   });
 
-  it.effect("sends a proposal only after its recipient approves it, as their message", () => {
+  it.effect("pairs two of this server's own threads locally", () => {
     const harness = makeHarness();
-    harness.analyst.respond = () =>
-      Effect.succeed({
-        ...goodOutput,
-        notes: [
-          {
-            to: "B",
-            kind: "proposal",
-            text: "Reuse the invoice table from thread A for refunds.",
-            evidence: ["A1"],
-          },
-        ],
-      });
+    harness.hub.mirrorConsent = null;
+    harness.analyst.respond = () => Effect.succeed(goodOutput);
     return Effect.gen(function* () {
       const cooperation = yield* CooperationService;
       yield* appendMessage(THREAD_A, "a");
-      yield* appendMessage(THREAD_B, "b");
-      yield* consent(OWNER_MEMBER_ID, THREAD_A);
-      yield* consent(ADA, THREAD_B);
-      yield* cooperation.analyzeThread(THREAD_A, "manual");
-
-      const [proposal] = (yield* cooperation.getInbox(ADA)).items;
-      expect(proposal?.kind).toBe("proposal");
-      expect(harness.dispatched).toEqual([]);
-
-      const wrongAction = yield* Effect.flip(
-        cooperation.resolveItem(ADA, { itemId: proposal!.itemId, action: "admit" }),
-      );
-      expect(wrongAction.reason).toBe("invalid");
-      const notRecipient = yield* Effect.flip(
-        cooperation.resolveItem(OWNER_MEMBER_ID, { itemId: proposal!.itemId, action: "approve" }),
-      );
-      expect(notRecipient.reason).toBe("not-found");
-
-      yield* cooperation.resolveItem(ADA, { itemId: proposal!.itemId, action: "approve" });
-      expect(harness.dispatched).toHaveLength(1);
-      const [{ command, actor }] = harness.dispatched as [
-        { command: OrchestrationCommand; actor: MemberId | undefined },
-      ];
-      expect(actor).toBe(ADA);
-      expect(command).toMatchObject({
-        type: "thread.turn.start",
-        threadId: THREAD_B,
-        message: { role: "user", text: "Reuse the invoice table from thread A for refunds." },
-      });
+      yield* appendMessage(THREAD_C, "c");
+      yield* consent(THREAD_A);
+      yield* consent(THREAD_C);
+      expect(yield* cooperation.analyzeThread(THREAD_A, "manual")).toBe(1);
+      // Both summaries are kept; only the published thread's goes to the hub.
+      expect(yield* cooperation.latestSummaryForThread(THREAD_C)).not.toBeNull();
+      expect(harness.hub.posts[0]?.summaries.map((summary) => summary.threadId)).toEqual([HUB_A]);
+      expect((yield* cooperation.getInbox).items).toHaveLength(1);
     }).pipe(Effect.provide(harness.layer));
   });
 
   it.effect("withdraws pending notes and the summary when consent is turned off", () => {
     const harness = makeHarness();
+    harness.hub.mirrorConsent = null;
     harness.analyst.respond = () => Effect.succeed(goodOutput);
     return Effect.gen(function* () {
       const cooperation = yield* CooperationService;
       yield* appendMessage(THREAD_A, "a");
-      yield* appendMessage(THREAD_B, "b");
-      yield* consent(OWNER_MEMBER_ID, THREAD_A);
-      yield* consent(ADA, THREAD_B);
+      yield* appendMessage(THREAD_C, "c");
+      yield* consent(THREAD_A);
+      yield* consent(THREAD_C);
       yield* cooperation.analyzeThread(THREAD_A, "manual");
-      expect((yield* cooperation.getInbox(ADA)).items).toHaveLength(1);
+      expect((yield* cooperation.getInbox).items).toHaveLength(1);
 
-      yield* consent(OWNER_MEMBER_ID, THREAD_A, { analysisEnabled: false });
+      yield* consent(THREAD_A, { analysisEnabled: false });
 
-      expect((yield* cooperation.getInbox(ADA)).items).toEqual([]);
+      expect((yield* cooperation.getInbox).items).toEqual([]);
       expect(yield* cooperation.latestSummaryForThread(THREAD_A)).toBeNull();
     }).pipe(Effect.provide(harness.layer));
   });

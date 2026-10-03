@@ -3950,35 +3950,29 @@ const makeWsRpcLayer = (
         [WS_METHODS.cooperationSubscribeThread]: (input) =>
           observeRpcStream(
             WS_METHODS.cooperationSubscribeThread,
-            cooperation.streamThreadState(currentMemberId, input.threadId),
+            cooperation.streamThreadState(input.threadId),
             { "rpc.aggregate": "cooperation" },
           ),
         [WS_METHODS.cooperationUpdateSettings]: (input) =>
           observeRpcEffect(
             WS_METHODS.cooperationUpdateSettings,
-            cooperation.updateSettings(currentMemberId, input),
+            cooperation.updateSettings(input),
             { "rpc.aggregate": "cooperation" },
           ),
         [WS_METHODS.cooperationRunAnalysis]: (input) =>
           observeRpcEffect(
             WS_METHODS.cooperationRunAnalysis,
-            cooperation
-              .requestAnalysis(currentMemberId, input.threadId)
-              .pipe(Effect.map((runs) => ({ runs }))),
+            cooperation.requestAnalysis(input.threadId).pipe(Effect.map((runs) => ({ runs }))),
             { "rpc.aggregate": "cooperation" },
           ),
         [WS_METHODS.cooperationSubscribeInbox]: () =>
-          observeRpcStream(
-            WS_METHODS.cooperationSubscribeInbox,
-            cooperation.streamInbox(currentMemberId),
-            { "rpc.aggregate": "cooperation" },
-          ),
+          observeRpcStream(WS_METHODS.cooperationSubscribeInbox, cooperation.streamInbox, {
+            "rpc.aggregate": "cooperation",
+          }),
         [WS_METHODS.cooperationResolveItem]: (input) =>
-          observeRpcEffect(
-            WS_METHODS.cooperationResolveItem,
-            cooperation.resolveItem(currentMemberId, input),
-            { "rpc.aggregate": "cooperation" },
-          ),
+          observeRpcEffect(WS_METHODS.cooperationResolveItem, cooperation.resolveItem(input), {
+            "rpc.aggregate": "cooperation",
+          }),
         [WS_METHODS.relatedWorkSuggest]: (input) =>
           observeRpcEffect(
             WS_METHODS.relatedWorkSuggest,

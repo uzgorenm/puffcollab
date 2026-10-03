@@ -2,6 +2,7 @@
  * CooperationReactor - runs cooperation analysis after a turn completes on an
  * opted-in thread. Side effects stay out of the decider: this reacts to
  * `thread.turn-diff-completed` (the end of every turn) outside orchestration.
+ * It also files awareness notes the team hub delivers into the inbox.
  *
  * Debounced two ways: a thread already queued is not queued again, and a
  * thread analyzed within the cooldown waits for a later turn.
@@ -18,6 +19,7 @@ import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
+import * as HubSync from "../hub/HubSync.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { forkParked } from "../serverActivation.ts";
 import { CooperationAnalyst } from "./CooperationAnalyst.ts";
@@ -38,6 +40,7 @@ export class CooperationReactor extends Context.Service<
 export const make = (options?: { readonly cooldownMs?: number }) =>
   Effect.gen(function* () {
     const engine = yield* OrchestrationEngineService;
+    const hub = yield* HubSync.HubSync;
     const cooperation = yield* CooperationService;
     const analyst = yield* CooperationAnalyst;
     const cooldownMs = options?.cooldownMs ?? DEFAULT_COOPERATION_COOLDOWN_MS;
@@ -81,6 +84,18 @@ export const make = (options?: { readonly cooldownMs?: number }) =>
       function* () {
         const events = yield* engine.subscribeDomainEvents;
         yield* forkParked(Stream.runForEach(events, processEvent));
+        // Teammates' notes for this server's threads arrive through the hub.
+        yield* forkParked(
+          Stream.runForEach(hub.incomingAwareness, (items) =>
+            cooperation
+              .admitHubAwareness(items)
+              .pipe(
+                Effect.catch((error) =>
+                  Effect.logWarning("team hub awareness skipped", { reason: error.reason }),
+                ),
+              ),
+          ),
+        );
       },
     );
 

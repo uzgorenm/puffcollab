@@ -41,7 +41,11 @@ import {
   HubClientFrame,
   type HubClientMessage,
   type HubAccount,
+  type HubAccountId,
+  type HubAnalysisSummary,
+  type HubAwarenessItem,
   type HubEnvironmentLinkId,
+  type HubThreadCooperation,
   HubLinkProjectResult,
   HubLinkStartResponse,
   HubLinkTokenResponse,
@@ -147,6 +151,16 @@ export interface HubTeamProject {
   readonly localProjectIds: ReadonlyArray<ProjectId>;
 }
 
+/** A teammate's thread as mirrored here, with the consent its owner published. */
+export interface HubMirrorInfo {
+  readonly hubThreadId: HubThreadId;
+  readonly ownerId: HubAccountId;
+  /** Null when the owner never turned analysis on. */
+  readonly cooperation: HubThreadCooperation | null;
+  /** The analysis summary its owner posted, if any. */
+  readonly analysis: HubAnalysisSummary | null;
+}
+
 /** Team data mirrored from the hub, for Team overview (Stage 7.4). */
 export interface HubTeamSnapshot {
   readonly account: HubAccount | null;
@@ -194,6 +208,25 @@ export class HubSync extends Context.Service<
     readonly setFocus: (input: HubFocusSetInput) => Effect.Effect<void, HubLocalError>;
     /** Leaves a linked project's hub project and unlinks the local project from it. */
     readonly leaveProject: (input: HubLeaveProjectInput) => Effect.Effect<void, HubLocalError>;
+    /** A teammate's mirror and its owner's consent; null for this server's own threads. */
+    readonly mirrorInfo: (threadId: ThreadId) => Effect.Effect<HubMirrorInfo | null>;
+    /** Mirrors in a local project whose owners opted into analysis on `featureTopic`. */
+    readonly consentingMirrors: (
+      projectId: ProjectId,
+      featureTopic: string,
+    ) => Effect.Effect<ReadonlyArray<ThreadId>>;
+    /** The hub id of one of this server's shared threads, or null while it is not on the hub. */
+    readonly publishedThreadId: (threadId: ThreadId) => Effect.Effect<HubThreadId | null>;
+    /** Republishes a thread's summary, for changes outside orchestration (consent). */
+    readonly refreshSummary: (threadId: ThreadId) => Effect.Effect<void>;
+    /** Posts analysis this server ran with its owner's provider (`analysis.post`). */
+    readonly postAnalysis: (input: {
+      readonly projectId: ProjectId;
+      readonly summaries: ReadonlyArray<HubAnalysisSummary>;
+      readonly awareness: ReadonlyArray<HubAwarenessItem>;
+    }) => Effect.Effect<void, HubLocalError>;
+    /** Awareness the hub delivered for this account's threads, now and after every change. */
+    readonly incomingAwareness: Stream.Stream<ReadonlyArray<HubAwarenessItem>>;
     /** The full patch of a teammate's turn, when the hub delivered one. */
     readonly getRemoteTurnDiff: (
       threadId: ThreadId,
@@ -294,6 +327,7 @@ type PublisherItem =
   | { readonly kind: "event"; readonly event: OrchestrationEvent }
   | { readonly kind: "reconcile" }
   | { readonly kind: "bootstrap"; readonly threadId: ThreadId; readonly reset: boolean }
+  | { readonly kind: "summary"; readonly threadId: ThreadId }
   | { readonly kind: "orphan"; readonly threadId: ThreadId; readonly cursor: HubThreadCursor };
 
 interface TeamState {
@@ -592,13 +626,40 @@ const make = Effect.gen(function* () {
       return related;
     });
 
+  /** The owner's cooperation consent (CooperationService's table); null when never set. */
+  const cooperationOf = (threadId: ThreadId) =>
+    sql<{
+      featureTopic: string;
+      analysisEnabled: number;
+      textEnabled: number;
+      awarenessNotify: number;
+    }>`
+      SELECT feature_topic AS "featureTopic", analysis_enabled AS "analysisEnabled",
+             text_enabled AS "textEnabled", awareness_notify AS "awarenessNotify"
+      FROM cooperation_thread_settings WHERE thread_id = ${threadId}
+    `.pipe(
+      Effect.map((rows): HubThreadCooperation | null => {
+        const row = rows[0];
+        return row === undefined
+          ? null
+          : {
+              featureTopic: row.featureTopic,
+              analysisEnabled: row.analysisEnabled === 1,
+              textEnabled: row.textEnabled === 1,
+              awarenessNotify: row.awarenessNotify === 1,
+            };
+      }),
+    );
+
   const currentSummary = (threadId: ThreadId) =>
     Effect.gen(function* () {
       const shell = yield* snapshots.getThreadShellById(threadId);
       if (Option.isNone(shell)) return null;
       const related = yield* relatedOf(threadId);
+      const cooperation = yield* cooperationOf(threadId);
       return {
         ...hubSummaryOf(shell.value),
+        ...(cooperation !== null ? { cooperation } : {}),
         ...(related.length > 0 ? { related } : {}),
       } satisfies HubThreadSummaryFields;
     }).pipe(Effect.orElseSucceed(() => null));
@@ -815,6 +876,32 @@ const make = Effect.gen(function* () {
       yield* signalOutbox;
     });
 
+  /** Appends a `thread.summary-set` when the summary changed outside orchestration. */
+  const refreshPublishedSummary = (threadId: ThreadId) =>
+    Effect.gen(function* () {
+      const published = yield* store.getPublished(threadId);
+      if (published === null) return;
+      const facts = yield* threadFacts(threadId);
+      const target = publishTarget(facts);
+      if (target === null) return;
+      const next = yield* currentSummary(threadId);
+      if (next === null || sameSummary(published.summary, next)) return;
+      const rows = toOutbound(
+        threadId,
+        target,
+        facts,
+        published.nextSeq,
+        [{ occurredAt: yield* nowIso, body: { type: "thread.summary-set", payload: next } }],
+        false,
+      );
+      if (rows.length === 0) return;
+      yield* store.commitPublish({
+        published: { ...published, nextSeq: published.nextSeq + rows.length, summary: next },
+        events: rows,
+      });
+      yield* signalOutbox;
+    });
+
   /** Brings every thread's stream in line with what should be shared. */
   const reconcile = Effect.gen(function* () {
     if (linkId === null) return;
@@ -876,6 +963,8 @@ const make = Effect.gen(function* () {
           return reconcile;
         case "bootstrap":
           return bootstrap(item.threadId, item.reset);
+        case "summary":
+          return refreshPublishedSummary(item.threadId);
         case "orphan":
           return handleOrphan(item.threadId, item.cursor);
       }
@@ -2128,6 +2217,61 @@ const make = Effect.gen(function* () {
       yield* removeMirrorsOfProject(hubProjectId);
     });
 
+  // ---------------------------------------------------------------------------
+  // Cooperation analysis
+  // ---------------------------------------------------------------------------
+
+  const mirrorInfo: HubSync["Service"]["mirrorInfo"] = (threadId) =>
+    Effect.gen(function* () {
+      const remote = yield* store.getRemoteByLocal(threadId);
+      if (remote === null) return null;
+      const state = yield* SubscriptionRef.get(team);
+      const summary = summaryOfHubThread(state, remote.hubThreadId);
+      const analysis =
+        state.projects
+          .get(remote.hubProjectId)
+          ?.analyses.find((entry) => entry.threadId === remote.hubThreadId) ?? null;
+      return {
+        hubThreadId: remote.hubThreadId,
+        ownerId: remote.link.ownerId,
+        cooperation: summary?.cooperation ?? null,
+        analysis,
+      };
+    }).pipe(Effect.orElseSucceed(() => null));
+
+  const consentingMirrors: HubSync["Service"]["consentingMirrors"] = (projectId, featureTopic) =>
+    Effect.gen(function* () {
+      const state = yield* SubscriptionRef.get(team);
+      const mirrors: Array<ThreadId> = [];
+      for (const remote of yield* store.listRemote) {
+        if (remote.localProjectId !== projectId || remote.generation === 0) continue;
+        const cooperation = summaryOfHubThread(state, remote.hubThreadId)?.cooperation;
+        if (cooperation?.analysisEnabled === true && cooperation.featureTopic === featureTopic) {
+          mirrors.push(remote.localThreadId);
+        }
+      }
+      return mirrors;
+    }).pipe(Effect.orElseSucceed(() => []));
+
+  const publishedThreadId: HubSync["Service"]["publishedThreadId"] = (threadId) =>
+    Effect.gen(function* () {
+      if (linkId === null || (yield* store.getPublished(threadId)) === null) return null;
+      return hubThreadIdOf(linkId, threadId);
+    }).pipe(Effect.orElseSucceed(() => null));
+
+  const postAnalysis: HubSync["Service"]["postAnalysis"] = (input) =>
+    Effect.gen(function* () {
+      if (input.summaries.length === 0 && input.awareness.length === 0) return;
+      const link = yield* requireProjectLink(input.projectId);
+      yield* request((requestId) => ({
+        type: "analysis.post",
+        requestId,
+        projectId: link.hubProjectId,
+        summaries: input.summaries,
+        awareness: input.awareness,
+      }));
+    });
+
   const requireProjectLink = (projectId: ProjectId) => {
     const link = projectLinks.get(projectId);
     return link === undefined
@@ -2338,6 +2482,19 @@ const make = Effect.gen(function* () {
         Stream.map((state) => projectTeamOf(state, projectId)),
         Stream.changesWith((left, right) => encodeTeamResult(left) === encodeTeamResult(right)),
       ),
+    mirrorInfo,
+    consentingMirrors,
+    publishedThreadId,
+    refreshSummary: (threadId) => publisher.enqueue({ kind: "summary", threadId }),
+    postAnalysis,
+    incomingAwareness: SubscriptionRef.changes(team).pipe(
+      Stream.map((state) => [...state.projects.values()].flatMap((project) => project.awareness)),
+      Stream.changesWith(
+        (left, right) =>
+          left.length === right.length &&
+          left.every((item, index) => item.itemId === right[index]?.itemId),
+      ),
+    ),
     removeMember,
     updateBrief,
     setFocus,

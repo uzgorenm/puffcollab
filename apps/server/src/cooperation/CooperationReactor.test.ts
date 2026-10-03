@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
+import * as HubSync from "../hub/HubSync.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { CooperationAnalyst } from "./CooperationAnalyst.ts";
 import { CooperationReactor, make } from "./CooperationReactor.ts";
@@ -28,6 +29,7 @@ function harness(options: { readonly enabled: boolean; readonly cooldownMs: numb
             }),
         }),
         Layer.mock(CooperationAnalyst)({ available: Effect.succeed(true) }),
+        Layer.mock(HubSync.HubSync)({ incomingAwareness: Stream.empty }),
       ),
     ),
   );

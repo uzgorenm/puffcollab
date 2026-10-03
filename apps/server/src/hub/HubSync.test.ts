@@ -11,6 +11,7 @@ import {
   HubEnvironmentLinkId,
   type HubLinkTokenResponse,
   type HubLocalTeam,
+  type HubThreadCooperation,
   type HubLocalStatus,
   HubProjectId,
   type HubProjectState,
@@ -61,6 +62,8 @@ import { OrchestrationCommandReceiptRepositoryLive } from "../persistence/Layers
 import { OrchestrationEventStoreLive } from "../persistence/Layers/OrchestrationEventStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import { CooperationAnalyst } from "../cooperation/CooperationAnalyst.ts";
+import * as CooperationService from "../cooperation/CooperationService.ts";
 import * as TeamAccess from "../team/TeamAccess.ts";
 import * as ThreadAccess from "../team/ThreadAccess.ts";
 import * as HubSync from "./HubSync.ts";
@@ -94,6 +97,7 @@ const decodeClient = Schema.decodeUnknownSync(HubClientFrame);
 interface HubThreadState {
   projectId: HubProjectId;
   ownerId: HubAccountId;
+  cooperation?: HubThreadCooperation;
   generation: number;
   events: Array<HubThreadEvent>;
 }
@@ -146,6 +150,7 @@ const makeFakeHub = (options: { readonly range?: HubProtocolRange } = {}) =>
       branch: null,
       status: "idle",
       updatedAt: NOW,
+      ...(state.cooperation !== undefined ? { cooperation: state.cooperation } : {}),
     });
 
     const projectState = (): HubProjectState => ({
@@ -321,6 +326,8 @@ const makeFakeHub = (options: { readonly range?: HubProtocolRange } = {}) =>
                       updatedAt: NOW,
                     },
             });
+          case "analysis.post":
+            return yield* push({ type: "ack", requestId: message.requestId });
           case "member.remove":
             members = members.filter((member) => member.accountId !== message.accountId);
             yield* push({ type: "ack", requestId: message.requestId });
@@ -1299,6 +1306,133 @@ it.layer(NodeServices.layer)("HubSync", (it) => {
           const mirror = Option.getOrThrow(yield* snapshots.getThreadDetailById(mirrorId));
           expect(mirror.relatedThreads).toEqual([
             expect.objectContaining({ relatedThreadId: own, relationship: "alternative" }),
+          ]);
+        }),
+      );
+    }).pipe(Effect.provide(baseLayer)),
+  );
+
+  it.effect("runs cooperation analysis end to end against a teammate's mirror", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakeHub();
+      seedTeammateThread(fake);
+      fake.threads.get(REMOTE_HUB_THREAD)!.cooperation = {
+        featureTopic: "parser",
+        analysisEnabled: true,
+        textEnabled: true,
+        awarenessNotify: true,
+      };
+      const prompts: Array<string> = [];
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(
+            CooperationService.layer.pipe(
+              Layer.provideMerge(HubSync.layer.pipe(Layer.provide(fake.layer))),
+              Layer.provide(
+                Layer.mock(CooperationAnalyst)({
+                  available: Effect.succeed(true),
+                  analyze: ({ prompt }) =>
+                    Effect.sync(() => {
+                      prompts.push(prompt);
+                      return {
+                        summaries: [
+                          { thread: "A" as const, summary: "Mine: tokenizer.", evidence: ["A1"] },
+                          { thread: "B" as const, summary: "Bob: parser.", evidence: ["B1"] },
+                        ],
+                        notes: [
+                          {
+                            to: "B" as const,
+                            kind: "note" as const,
+                            text: "The tokenizer now emits spans.",
+                            evidence: ["A1", "B1"],
+                          },
+                        ],
+                      };
+                    }),
+                }),
+              ),
+            ),
+          );
+          const hub = Context.get(context, HubSync.HubSync);
+          const cooperation = Context.get(context, CooperationService.CooperationService);
+          yield* hub.start();
+          yield* linkEnvironment(hub, fake);
+          yield* setupProjects(hub);
+          yield* fake.waitFor(isAckFor(REMOTE_HUB_THREAD, 2));
+          const mirrorId = mirrorThreadIdOf(REMOTE_HUB_THREAD);
+          const own = ThreadId.make("t-tokenizer");
+          const ownHubId = HubThreadId.make(`${LINK_ID}:${own}`);
+          yield* createThread(own, PROJECT, "shared");
+          yield* appendUserMessage(own, "Rework the tokenizer");
+
+          // Consent reaches the hub on the thread's summary.
+          yield* cooperation.updateSettings({
+            threadId: own,
+            expectedVersion: 0,
+            featureTopic: "parser",
+            analysisEnabled: true,
+            textEnabled: true,
+            awarenessNotify: true,
+          });
+          yield* hub.drain;
+          yield* waitStatus(hub, (status) => status.queuedEvents === 0);
+          const summaries = sharedEvents(fake, own).flatMap((event) =>
+            event.body.type === "thread.summary-set" ? [event.body.payload] : [],
+          );
+          expect(summaries.at(-1)?.cooperation).toMatchObject({
+            featureTopic: "parser",
+            analysisEnabled: true,
+          });
+
+          expect(yield* cooperation.requestAnalysis(own)).toBe(1);
+          expect(prompts[0]).toContain("Refactor the parser");
+          const post = yield* fake.waitFor(
+            (message): message is Extract<HubClientMessage, { type: "analysis.post" }> =>
+              message.type === "analysis.post",
+          );
+          expect(post.summaries).toEqual([
+            { threadId: ownHubId, summary: "Mine: tokenizer.", updatedAt: expect.any(String) },
+          ]);
+          expect(post.awareness).toEqual([
+            expect.objectContaining({
+              sourceThreadId: ownHubId,
+              targetThreadId: REMOTE_HUB_THREAD,
+              text: "The tokenizer now emits spans.",
+              citations: [{ threadId: REMOTE_HUB_THREAD, generation: 1, seq: 2 }],
+            }),
+          ]);
+
+          // Bob's run leaves a note for our thread; the hub delivers it here.
+          yield* fake.push({
+            type: "team.awareness",
+            projectId: HUB_PROJECT,
+            items: [
+              {
+                itemId: "bob-item",
+                kind: "note",
+                sourceThreadId: REMOTE_HUB_THREAD,
+                sourceThreadTitle: "Bob's thread",
+                targetThreadId: ownHubId,
+                text: "The parser expects spans now.",
+                citations: [{ threadId: REMOTE_HUB_THREAD, generation: 1, seq: 2 }],
+                createdAt: NOW,
+              },
+            ],
+          });
+          const delivered = yield* hub.incomingAwareness.pipe(
+            Stream.filter((items) => items.length > 0),
+            Stream.runHead,
+            Effect.map(Option.getOrThrow),
+          );
+          yield* cooperation.admitHubAwareness(delivered);
+          const inbox = (yield* cooperation.getInbox).items;
+          expect(inbox).toEqual([
+            expect.objectContaining({
+              sourceThreadId: mirrorId,
+              targetThreadId: own,
+              text: "The parser expects spans now.",
+              citations: [expect.objectContaining({ threadId: mirrorId })],
+            }),
           ]);
         }),
       );

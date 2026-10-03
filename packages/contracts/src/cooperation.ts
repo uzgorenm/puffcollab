@@ -72,9 +72,7 @@ export type CooperationLastRun = typeof CooperationLastRun.Type;
 
 export const CooperationThreadState = Schema.Struct({
   threadId: ThreadId,
-  /** Effective owner: the creator, or the environment owner for threads without one. */
-  ownerMemberId: MemberId,
-  /** Whether the viewing member may change the settings. */
+  /** False for a teammate's mirror: its owner sets its consent on their machine. */
   canEdit: Schema.Boolean,
   settings: CooperationSettings,
   summary: Schema.NullOr(CooperationAnalysisSummary),
