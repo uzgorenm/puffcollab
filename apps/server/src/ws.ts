@@ -74,6 +74,8 @@ import {
   AssetWorkspaceContextResolutionError,
   RpcClientId,
   EnvironmentAuthorizationError,
+  HubLocalError,
+  type HubLocalStatus,
   ThreadId,
   type TerminalAttachStreamEvent,
   type TerminalError,
@@ -218,6 +220,21 @@ const resolveDiscoveryForConfig = <A, E, R>(
     Effect.timeoutOption(CONFIG_DISCOVERY_TIMEOUT),
     Effect.map(Option.getOrElse(onTimeout)),
   );
+
+// Placeholders for the Stage 7 hub RPCs until HubSync (7.2) replaces them.
+const HUB_UNLINKED_STATUS: HubLocalStatus = {
+  state: "unlinked",
+  hubUrl: null,
+  account: null,
+  linkId: null,
+  pendingLink: null,
+  projects: [],
+  queuedEvents: 0,
+  lastError: null,
+};
+const hubUnavailable = Effect.fail(
+  new HubLocalError({ reason: "unavailable", message: "Team hub sync is not available yet." }),
+);
 
 export const resolveAvailableEditorsForConfig = <A, E, R>(
   discovery: Effect.Effect<ReadonlyArray<A>, E, R>,
@@ -3896,6 +3913,41 @@ const makeWsRpcLayer = (
             projectInvitations.subscribeMine(currentMemberId),
             { "rpc.aggregate": "team" },
           ),
+        // Stage 7 team hub: placeholders until the HubSync service (7.2) lands.
+        [WS_METHODS.hubSubscribeStatus]: () =>
+          observeRpcStream(WS_METHODS.hubSubscribeStatus, Stream.succeed(HUB_UNLINKED_STATUS), {
+            "rpc.aggregate": "hub",
+          }),
+        [WS_METHODS.hubConfigure]: () =>
+          observeRpcEffect(WS_METHODS.hubConfigure, hubUnavailable, { "rpc.aggregate": "hub" }),
+        [WS_METHODS.hubLinkStart]: () =>
+          observeRpcEffect(WS_METHODS.hubLinkStart, hubUnavailable, { "rpc.aggregate": "hub" }),
+        [WS_METHODS.hubLinkCancel]: () =>
+          observeRpcEffect(WS_METHODS.hubLinkCancel, hubUnavailable, { "rpc.aggregate": "hub" }),
+        [WS_METHODS.hubUnlink]: () =>
+          observeRpcEffect(WS_METHODS.hubUnlink, hubUnavailable, { "rpc.aggregate": "hub" }),
+        [WS_METHODS.hubLinkProject]: () =>
+          observeRpcEffect(WS_METHODS.hubLinkProject, hubUnavailable, { "rpc.aggregate": "hub" }),
+        [WS_METHODS.hubUnlinkProject]: () =>
+          observeRpcEffect(WS_METHODS.hubUnlinkProject, hubUnavailable, {
+            "rpc.aggregate": "hub",
+          }),
+        [WS_METHODS.hubSubscribeInvitations]: () =>
+          observeRpcStream(
+            WS_METHODS.hubSubscribeInvitations,
+            Stream.succeed({ invitations: [] }),
+            { "rpc.aggregate": "hub" },
+          ),
+        [WS_METHODS.hubInvite]: () =>
+          observeRpcEffect(WS_METHODS.hubInvite, hubUnavailable, { "rpc.aggregate": "hub" }),
+        [WS_METHODS.hubRespondInvitation]: () =>
+          observeRpcEffect(WS_METHODS.hubRespondInvitation, hubUnavailable, {
+            "rpc.aggregate": "hub",
+          }),
+        [WS_METHODS.hubCancelInvitation]: () =>
+          observeRpcEffect(WS_METHODS.hubCancelInvitation, hubUnavailable, {
+            "rpc.aggregate": "hub",
+          }),
         [WS_METHODS.teamOverviewActivityPage]: (input) =>
           observeRpcEffect(
             WS_METHODS.teamOverviewActivityPage,

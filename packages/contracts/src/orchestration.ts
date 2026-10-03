@@ -25,6 +25,7 @@ import {
   TrimmedString,
   TurnId,
 } from "./baseSchemas.ts";
+import { HubThreadLink } from "./hubLocal.ts";
 import { OWNER_MEMBER_ID } from "./members.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
@@ -896,6 +897,9 @@ export const OrchestrationThread = Schema.Struct({
   createdBy: Schema.optional(Schema.NullOr(MemberId)),
   // Who besides the owner can follow the thread. Missing means private.
   visibility: Schema.optional(ThreadVisibility),
+  // Team hub link (Stage 7): set on shared threads and on teammates' remote
+  // mirrors. See hubLocal.ts HubThreadLink.
+  hub: Schema.optional(HubThreadLink),
   // Teammates' comments, oldest first. Detail snapshots only; never sent to
   // the provider. Optional so payloads from older servers still decode.
   comments: Schema.optional(Schema.Array(OrchestrationThreadComment)),
@@ -977,6 +981,8 @@ export const OrchestrationThreadShell = Schema.Struct({
   createdBy: Schema.optional(Schema.NullOr(MemberId)),
   // See OrchestrationThread.visibility.
   visibility: Schema.optional(ThreadVisibility),
+  // See OrchestrationThread.hub.
+  hub: Schema.optional(HubThreadLink),
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
   session: Schema.NullOr(OrchestrationSession),

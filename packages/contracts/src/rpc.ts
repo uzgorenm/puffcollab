@@ -337,6 +337,20 @@ import {
   SourceControlRepositoryInfo,
   SourceControlRepositoryLookupInput,
 } from "./sourceControl.ts";
+import {
+  HubConfigureInput,
+  HubInvitationCancelInput,
+  HubInvitationRespondInput,
+  HubInviteInput,
+  HubLinkProjectInput,
+  HubLinkProjectResult,
+  HubLocalError,
+  HubLocalInvitation,
+  HubLocalInvitationsResult,
+  HubLocalStatus,
+  HubPendingLink,
+  HubUnlinkProjectInput,
+} from "./hubLocal.ts";
 import { VcsError } from "./vcs.ts";
 
 export const WS_METHODS = {
@@ -542,6 +556,17 @@ export const WS_METHODS = {
   subscribeServerConfig: "subscribeServerConfig",
   subscribeTeamOverview: "subscribeTeamOverview",
   subscribeProjectInvitations: "subscribeProjectInvitations",
+  hubSubscribeStatus: "hub.subscribeStatus",
+  hubConfigure: "hub.configure",
+  hubLinkStart: "hub.linkStart",
+  hubLinkCancel: "hub.linkCancel",
+  hubUnlink: "hub.unlink",
+  hubLinkProject: "hub.linkProject",
+  hubUnlinkProject: "hub.unlinkProject",
+  hubSubscribeInvitations: "hub.subscribeInvitations",
+  hubInvite: "hub.invite",
+  hubRespondInvitation: "hub.respondInvitation",
+  hubCancelInvitation: "hub.cancelInvitation",
   subscribeServerLifecycle: "subscribeServerLifecycle",
   subscribeAuthAccess: "subscribeAuthAccess",
   subscribeBackgroundPolicy: "subscribeBackgroundPolicy",
@@ -1194,6 +1219,65 @@ const WsProjectInvitationsCancelRpc = Rpc.make(WS_METHODS.projectInvitationsCanc
 });
 
 // The caller's pending invitations now and after every change to them.
+const HubLocalRpcError = Schema.Union([HubLocalError, EnvironmentAuthorizationError]);
+const WsHubSubscribeStatusRpc = Rpc.make(WS_METHODS.hubSubscribeStatus, {
+  payload: Schema.Struct({}),
+  success: HubLocalStatus,
+  error: HubLocalRpcError,
+  stream: true,
+});
+const WsHubConfigureRpc = Rpc.make(WS_METHODS.hubConfigure, {
+  payload: HubConfigureInput,
+  success: HubLocalStatus,
+  error: HubLocalRpcError,
+});
+const WsHubLinkStartRpc = Rpc.make(WS_METHODS.hubLinkStart, {
+  payload: Schema.Struct({}),
+  success: HubPendingLink,
+  error: HubLocalRpcError,
+});
+const WsHubLinkCancelRpc = Rpc.make(WS_METHODS.hubLinkCancel, {
+  payload: Schema.Struct({}),
+  success: HubLocalStatus,
+  error: HubLocalRpcError,
+});
+const WsHubUnlinkRpc = Rpc.make(WS_METHODS.hubUnlink, {
+  payload: Schema.Struct({}),
+  success: HubLocalStatus,
+  error: HubLocalRpcError,
+});
+const WsHubLinkProjectRpc = Rpc.make(WS_METHODS.hubLinkProject, {
+  payload: HubLinkProjectInput,
+  success: HubLinkProjectResult,
+  error: HubLocalRpcError,
+});
+const WsHubUnlinkProjectRpc = Rpc.make(WS_METHODS.hubUnlinkProject, {
+  payload: HubUnlinkProjectInput,
+  success: HubLocalStatus,
+  error: HubLocalRpcError,
+});
+const WsHubSubscribeInvitationsRpc = Rpc.make(WS_METHODS.hubSubscribeInvitations, {
+  payload: Schema.Struct({}),
+  success: HubLocalInvitationsResult,
+  error: HubLocalRpcError,
+  stream: true,
+});
+const WsHubInviteRpc = Rpc.make(WS_METHODS.hubInvite, {
+  payload: HubInviteInput,
+  success: HubLocalInvitation,
+  error: HubLocalRpcError,
+});
+const WsHubRespondInvitationRpc = Rpc.make(WS_METHODS.hubRespondInvitation, {
+  payload: HubInvitationRespondInput,
+  success: HubLocalInvitation,
+  error: HubLocalRpcError,
+});
+const WsHubCancelInvitationRpc = Rpc.make(WS_METHODS.hubCancelInvitation, {
+  payload: HubInvitationCancelInput,
+  success: HubLocalInvitation,
+  error: HubLocalRpcError,
+});
+
 const WsSubscribeProjectInvitationsRpc = Rpc.make(WS_METHODS.subscribeProjectInvitations, {
   payload: Schema.Struct({}),
   success: ProjectInvitationsListResult,
@@ -1816,6 +1900,17 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectInvitationsDeclineRpc,
   WsProjectInvitationsCancelRpc,
   WsSubscribeProjectInvitationsRpc,
+  WsHubSubscribeStatusRpc,
+  WsHubConfigureRpc,
+  WsHubLinkStartRpc,
+  WsHubLinkCancelRpc,
+  WsHubUnlinkRpc,
+  WsHubLinkProjectRpc,
+  WsHubUnlinkProjectRpc,
+  WsHubSubscribeInvitationsRpc,
+  WsHubInviteRpc,
+  WsHubRespondInvitationRpc,
+  WsHubCancelInvitationRpc,
   WsTeamOverviewActivityPageRpc,
   WsTeamOverviewBriefHistoryRpc,
   WsTeamOverviewUpdateBriefRpc,

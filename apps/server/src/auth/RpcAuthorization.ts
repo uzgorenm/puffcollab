@@ -136,6 +136,18 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.projectInvitationsDecline]: AuthOrchestrationOperateScope,
   [WS_METHODS.projectInvitationsCancel]: AuthOrchestrationOperateScope,
   [WS_METHODS.subscribeProjectInvitations]: AuthOrchestrationReadScope,
+  // Team hub (Stage 7): the local server forwards these to the hub.
+  [WS_METHODS.hubSubscribeStatus]: AuthOrchestrationReadScope,
+  [WS_METHODS.hubConfigure]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hubLinkStart]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hubLinkCancel]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hubUnlink]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hubLinkProject]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hubUnlinkProject]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hubSubscribeInvitations]: AuthOrchestrationReadScope,
+  [WS_METHODS.hubInvite]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hubRespondInvitation]: AuthOrchestrationOperateScope,
+  [WS_METHODS.hubCancelInvitation]: AuthOrchestrationOperateScope,
   // Any project member reads the overview and writes the brief and their own focus;
   // the TeamOverview service checks membership.
   [WS_METHODS.teamOverviewActivityPage]: AuthOrchestrationReadScope,
@@ -238,6 +250,11 @@ export const ADMIN_ONLY_RPC_METHODS: ReadonlySet<string> = new Set<WsRpcMethod>(
   WS_METHODS.serverUpdateServerWithProgress,
   WS_METHODS.serverCommitDesktopUpdate,
   WS_METHODS.serverSignalProcess,
+  // Linking this environment to a hub account is a host-wide choice.
+  WS_METHODS.hubConfigure,
+  WS_METHODS.hubLinkStart,
+  WS_METHODS.hubLinkCancel,
+  WS_METHODS.hubUnlink,
 ]);
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {
