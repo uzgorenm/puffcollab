@@ -8,6 +8,7 @@
  * @module ProjectionThreadComments
  */
 import {
+  HubAccount,
   IsoDateTime,
   MemberId,
   OrchestrationThreadComment,
@@ -30,6 +31,8 @@ export const ProjectionThreadComment = Schema.Struct({
   authorId: MemberId,
   text: Schema.String,
   createdAt: IsoDateTime,
+  // A teammate's comment from the team hub; stored as JSON.
+  hubAuthor: Schema.optional(Schema.NullOr(Schema.fromJsonString(HubAccount))),
 });
 export type ProjectionThreadComment = typeof ProjectionThreadComment.Type;
 
@@ -43,6 +46,7 @@ export const toOrchestrationThreadComment = (
   authorId: row.authorId,
   text: row.text,
   createdAt: row.createdAt,
+  ...(row.hubAuthor != null ? { hubAuthor: row.hubAuthor } : {}),
 });
 
 export class ProjectionThreadCommentRepository extends Context.Service<
@@ -73,8 +77,12 @@ export const make = Effect.gen(function* () {
   const insertRow = SqlSchema.void({
     Request: ProjectionThreadComment,
     execute: (row) => sql`
-      INSERT INTO projection_thread_comments (comment_id, thread_id, author_id, text, created_at)
-      VALUES (${row.commentId}, ${row.threadId}, ${row.authorId}, ${row.text}, ${row.createdAt})
+      INSERT INTO projection_thread_comments
+        (comment_id, thread_id, author_id, text, created_at, hub_author_json)
+      VALUES (
+        ${row.commentId}, ${row.threadId}, ${row.authorId}, ${row.text}, ${row.createdAt},
+        ${row.hubAuthor ?? null}
+      )
       ON CONFLICT (comment_id) DO NOTHING
     `,
   });
@@ -88,7 +96,8 @@ export const make = Effect.gen(function* () {
         thread_id AS "threadId",
         author_id AS "authorId",
         text,
-        created_at AS "createdAt"
+        created_at AS "createdAt",
+        hub_author_json AS "hubAuthor"
       FROM projection_thread_comments
       WHERE comment_id = ${commentId}
     `,
@@ -103,7 +112,8 @@ export const make = Effect.gen(function* () {
         thread_id AS "threadId",
         author_id AS "authorId",
         text,
-        created_at AS "createdAt"
+        created_at AS "createdAt",
+        hub_author_json AS "hubAuthor"
       FROM projection_thread_comments
       WHERE thread_id = ${threadId}
       ORDER BY created_at ASC, comment_id ASC

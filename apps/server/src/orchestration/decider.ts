@@ -6,6 +6,7 @@ import {
   ThreadLinkedPullRequest,
   UserInputRequestedPayload,
   isImportedAgentSessionMessageId,
+  isRemoteHubThread,
   type OrchestrationCommand,
   type OrchestrationEvent,
   type OrchestrationReadModel,
@@ -2342,6 +2343,128 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           commentId: command.commentId,
           deletedAt: occurredAt,
         },
+      };
+    }
+
+    // Team hub (Stage 7), dispatched only by HubSync. Mirrors are read-only
+    // copies of a teammate's shared thread: these never touch a local thread.
+    case "thread.hub-mirror.apply": {
+      const existing = readModel.threads.find(
+        (thread) => thread.id === command.threadId && thread.deletedAt === null,
+      );
+      if (existing !== undefined && !isRemoteHubThread(existing)) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Thread '${command.threadId}' is local and cannot receive hub events.`,
+        });
+      }
+      let live = existing !== undefined;
+      const events: Array<PlannedOrchestrationEvent> = [];
+      if (command.reset === true && live) {
+        events.push({
+          ...(yield* withEventBase({
+            aggregateKind: "thread",
+            aggregateId: command.threadId,
+            occurredAt: command.createdAt,
+            commandId: command.commandId,
+            metadata: { hubOrigin: { generation: command.generation } },
+          })),
+          type: "thread.deleted",
+          payload: { threadId: command.threadId, deletedAt: command.createdAt },
+        });
+        live = false;
+      }
+      for (const entry of command.events) {
+        const { event } = entry;
+        if (event.type === "thread.created" ? live : !live) {
+          // A repeated create within one generation is a resend; anything
+          // before the create cannot be applied.
+          if (event.type === "thread.created") continue;
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `Hub mirror '${command.threadId}' must start with thread.created.`,
+          });
+        }
+        const base = yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: entry.occurredAt,
+          commandId: command.commandId,
+          metadata: { hubOrigin: { generation: command.generation, seq: entry.seq } },
+        });
+        events.push({ ...base, ...event } as PlannedOrchestrationEvent);
+        if (event.type === "thread.created") {
+          live = true;
+          events.push({
+            ...(yield* withEventBase({
+              aggregateKind: "thread",
+              aggregateId: command.threadId,
+              occurredAt: entry.occurredAt,
+              commandId: command.commandId,
+              metadata: { hubOrigin: { generation: command.generation } },
+            })),
+            type: "thread.hub-link-set",
+            payload: { threadId: command.threadId, hub: command.hub },
+          });
+        } else if (event.type === "thread.deleted") {
+          live = false;
+        }
+      }
+      return events;
+    }
+
+    case "thread.hub-comment.add": {
+      yield* requireThread({ readModel, command, threadId: command.threadId });
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: command.createdAt,
+          commandId: command.commandId,
+          metadata: { hubOrigin: {} },
+        })),
+        type: "thread.comment-added",
+        payload: {
+          threadId: command.threadId,
+          commentId: command.commentId,
+          text: command.text,
+          createdAt: command.createdAt,
+          hubAuthor: command.author,
+        },
+      };
+    }
+
+    case "thread.hub-comment.delete": {
+      yield* requireThread({ readModel, command, threadId: command.threadId });
+      const occurredAt = yield* nowIso;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+          metadata: { hubOrigin: {} },
+        })),
+        type: "thread.comment-deleted",
+        payload: {
+          threadId: command.threadId,
+          commentId: command.commentId,
+          deletedAt: occurredAt,
+        },
+      };
+    }
+
+    case "thread.hub-link.set": {
+      yield* requireThread({ readModel, command, threadId: command.threadId });
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt: yield* nowIso,
+          commandId: command.commandId,
+        })),
+        type: "thread.hub-link-set",
+        payload: { threadId: command.threadId, hub: command.hub },
       };
     }
 

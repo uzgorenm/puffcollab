@@ -1920,7 +1920,12 @@ const make = Effect.gen(function* () {
 
     // Subscribe before returning, even while event handling waits for server activation.
     const domainEvents = yield* orchestrationEngine.subscribeDomainEvents;
-    yield* forkParked(Stream.runForEach(domainEvents, processEvent));
+    // Team hub mirrors never start provider work or title generation here.
+    yield* forkParked(
+      Stream.runForEach(domainEvents, (event) =>
+        event.metadata.hubOrigin !== undefined ? Effect.void : processEvent(event),
+      ),
+    );
 
     // Earlier events do not replay. Clear interrupted requests by their captured
     // IDs, then schedule persisted refinements after subscribing to their events.

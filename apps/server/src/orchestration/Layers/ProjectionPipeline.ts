@@ -1,6 +1,7 @@
 import {
   ApprovalRequestId,
   isImportedAgentSessionMessageId,
+  hubCommentAuthorId,
   OWNER_MEMBER_ID,
   UserInputAttachmentAnswerPayload,
   type ChatAttachment,
@@ -633,6 +634,16 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
     const applyThreadsProjection: ProjectorDefinition["apply"] = Effect.fn(
       "applyThreadsProjection",
     )(function* (event, attachmentSideEffects) {
+      // Team hub mirrors: the mirror's hub stream position commits with the
+      // events it produced, so a restart resumes exactly after them.
+      const hubCursor = event.metadata.hubOrigin;
+      if (hubCursor?.generation !== undefined && hubCursor.seq !== undefined) {
+        yield* sql`
+          UPDATE hub_remote_threads
+          SET generation = ${hubCursor.generation}, seq = ${hubCursor.seq}
+          WHERE local_thread_id = ${event.aggregateId}
+        `.pipe(Effect.mapError(toPersistenceSqlError("ProjectionPipeline.hubMirrorCursor")));
+      }
       switch (event.type) {
         case "thread.created":
           // A draft retry can re-create this id; links belong to the old incarnation.
@@ -696,15 +707,35 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           return;
         }
 
-        case "thread.comment-added":
+        case "thread.comment-added": {
+          const hubAuthor = event.payload.hubAuthor;
           yield* projectionThreadCommentRepository.insert({
             commentId: event.payload.commentId,
             threadId: event.payload.threadId,
-            authorId: event.metadata.actor ?? OWNER_MEMBER_ID,
+            authorId:
+              hubAuthor !== undefined
+                ? hubCommentAuthorId(hubAuthor.accountId)
+                : (event.metadata.actor ?? OWNER_MEMBER_ID),
             text: event.payload.text,
             createdAt: event.payload.createdAt,
+            hubAuthor: hubAuthor ?? null,
           });
           return;
+        }
+
+        case "thread.hub-link-set": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            hubLink: event.payload.hub,
+          });
+          return;
+        }
 
         case "thread.comment-deleted":
           yield* projectionThreadCommentRepository.deleteById({

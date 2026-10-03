@@ -73,7 +73,7 @@ export const make = (options?: { readonly cooldownMs?: number }) =>
       });
 
     const processEvent = (event: OrchestrationEvent) =>
-      event.type === "thread.turn-diff-completed"
+      event.type === "thread.turn-diff-completed" && event.metadata.hubOrigin === undefined
         ? notifyTurnCompleted(event.payload.threadId)
         : Effect.void;
 

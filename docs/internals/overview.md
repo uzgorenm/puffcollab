@@ -69,6 +69,18 @@ Persisted events must remain decodable on replay. Changing a schema affects old 
 startup as well as live RPC traffic. Compatibility work must account for stored history, not just
 what the newest client sends.
 
+## Team hub mirrors
+
+A teammate's shared thread arrives from the team hub as a read-only mirror. Its events run through
+the ordinary engine (`thread.hub-mirror.apply` in [HubSync](../../apps/server/src/hub/HubSync.ts)),
+so shells, thread streams, resume and search need no second code path. The price is that mirrors
+look like local threads to everything that reads projections: events applied from the hub carry
+`metadata.hubOrigin`, every reactor that does work must skip them, background sweeps must drop
+`isRemoteHubThread` threads, and `ThreadAccess` rejects every command on a mirror except comments.
+A new reactor or sweep that forgets this will run provider, git or checkpoint work for someone
+else's thread. Publishing is the reverse: only shared threads in hub-linked projects are read into
+the outbound queue, and nothing with `hubOrigin` is published back.
+
 ## Turn completion and checkpoints
 
 A turn ending and its follow-up work settling are separate milestones. The

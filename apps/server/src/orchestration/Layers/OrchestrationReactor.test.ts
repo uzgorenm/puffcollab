@@ -17,6 +17,7 @@ import { makeOrchestrationReactor } from "./OrchestrationReactor.ts";
 import * as AgentAwarenessRelay from "../../relay/AgentAwarenessRelay.ts";
 import { StorageCleanup } from "../../storageCleanup.ts";
 import { CooperationReactor } from "../../cooperation/CooperationReactor.ts";
+import * as HubSync from "../../hub/HubSync.ts";
 
 describe("OrchestrationReactor", () => {
   let runtime: ManagedRuntime.ManagedRuntime<OrchestrationReactor, never> | null = null;
@@ -33,6 +34,14 @@ describe("OrchestrationReactor", () => {
 
     runtime = ManagedRuntime.make(
       Layer.effect(OrchestrationReactor, makeOrchestrationReactor).pipe(
+        Layer.provideMerge(
+          Layer.succeed(HubSync.HubSync, {
+            start: () => {
+              started.push("hub-sync");
+              return Effect.void;
+            },
+          } as unknown as HubSync.HubSync["Service"]),
+        ),
         Layer.provideMerge(
           Layer.succeed(CooperationReactor, {
             start: () => {
@@ -144,6 +153,7 @@ describe("OrchestrationReactor", () => {
       "agent-awareness-relay",
       "storage-cleanup",
       "cooperation-reactor",
+      "hub-sync",
     ]);
 
     await Effect.runPromise(Scope.close(scope, Exit.void));

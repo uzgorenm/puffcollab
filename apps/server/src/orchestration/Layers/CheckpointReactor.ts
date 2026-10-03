@@ -1025,6 +1025,8 @@ const make = Effect.gen(function* () {
   const start: CheckpointReactorShape["start"] = Effect.fn("start")(function* () {
     yield* forkParked(
       Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
+        // Team hub mirrors are read-only; their owner's server checkpoints them.
+        if (event.metadata.hubOrigin !== undefined) return Effect.void;
         if (
           event.type !== "thread.turn-start-requested" &&
           event.type !== "thread.message-sent" &&

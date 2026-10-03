@@ -25,6 +25,7 @@ import {
   TrimmedString,
   TurnId,
 } from "./baseSchemas.ts";
+import { HubAccount } from "./hubIds.ts";
 import { HubThreadLink } from "./hubLocal.ts";
 import { OWNER_MEMBER_ID } from "./members.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
@@ -836,6 +837,9 @@ export const OrchestrationThreadComment = Schema.Struct({
   authorId: MemberId,
   text: TrimmedNonEmptyString.check(Schema.isMaxLength(THREAD_COMMENT_MAX_LENGTH)),
   createdAt: IsoDateTime,
+  // Set when a teammate wrote it through the team hub (Stage 7); `authorId`
+  // is then the hub's `hubCommentAuthorId` of their account.
+  hubAuthor: Schema.optional(HubAccount),
 });
 export type OrchestrationThreadComment = typeof OrchestrationThreadComment.Type;
 
@@ -1825,12 +1829,6 @@ const InternalOrchestrationCommand = Schema.Union([
 ]);
 export type InternalOrchestrationCommand = typeof InternalOrchestrationCommand.Type;
 
-export const OrchestrationCommand = Schema.Union([
-  DispatchableClientOrchestrationCommand,
-  InternalOrchestrationCommand,
-]);
-export type OrchestrationCommand = typeof OrchestrationCommand.Type;
-
 export const OrchestrationEventType = Schema.Literals([
   "project.created",
   "project.meta-updated",
@@ -1872,6 +1870,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.visibility-set",
   "thread.comment-added",
   "thread.comment-deleted",
+  "thread.hub-link-set",
 ]);
 export type OrchestrationEventType = typeof OrchestrationEventType.Type;
 
@@ -2173,12 +2172,14 @@ export const ThreadVisibilitySetPayload = Schema.Struct({
   updatedAt: IsoDateTime,
 });
 
-// The author is the event's `metadata.actor` (environment owner when absent).
+// The author is the event's `metadata.actor` (environment owner when absent),
+// or `hubAuthor` for a teammate's comment that arrived from the team hub.
 export const ThreadCommentAddedPayload = Schema.Struct({
   threadId: ThreadId,
   commentId: ThreadCommentId,
   text: TrimmedNonEmptyString,
   createdAt: IsoDateTime,
+  hubAuthor: Schema.optional(HubAccount),
 });
 
 export const ThreadCommentDeletedPayload = Schema.Struct({
@@ -2186,6 +2187,102 @@ export const ThreadCommentDeletedPayload = Schema.Struct({
   commentId: ThreadCommentId,
   deletedAt: IsoDateTime,
 });
+
+// Team hub (Stage 7): the thread's hub link changed. Null clears it.
+export const ThreadHubLinkSetPayload = Schema.Struct({
+  threadId: ThreadId,
+  hub: Schema.NullOr(HubThreadLink),
+});
+
+/** The member id a hub account's comments carry in `OrchestrationThreadComment.authorId`. */
+export const hubCommentAuthorId = (accountId: string): MemberId =>
+  MemberId.make(`hub:${accountId}`);
+
+/**
+ * One event of a teammate's shared thread, as the team hub delivered it and
+ * rewritten to this server's mirror thread and project. Same shapes as the
+ * orchestration events they become.
+ */
+const hubMirrorEvent = <Type extends string, Payload extends Schema.Top>(
+  type: Type,
+  payload: Payload,
+) => Schema.Struct({ type: Schema.Literal(type), payload });
+
+export const ThreadHubMirrorEvent = Schema.Union([
+  hubMirrorEvent("thread.created", ThreadCreatedPayload),
+  hubMirrorEvent("thread.meta-updated", ThreadMetaUpdatedPayload),
+  hubMirrorEvent("thread.message-sent", ThreadMessageSentPayload),
+  hubMirrorEvent("thread.activity-appended", ThreadActivityAppendedPayload),
+  hubMirrorEvent("thread.turn-diff-completed", ThreadTurnDiffCompletedPayload),
+  hubMirrorEvent("thread.proposed-plan-upserted", ThreadProposedPlanUpsertedPayload),
+  hubMirrorEvent("thread.session-set", ThreadSessionSetPayload),
+  hubMirrorEvent("thread.reverted", ThreadRevertedPayload),
+  hubMirrorEvent("thread.archived", ThreadArchivedPayload),
+  hubMirrorEvent("thread.unarchived", ThreadUnarchivedPayload),
+  hubMirrorEvent("thread.visibility-set", ThreadVisibilitySetPayload),
+  hubMirrorEvent("thread.deleted", ThreadDeletedPayload),
+]);
+export type ThreadHubMirrorEvent = typeof ThreadHubMirrorEvent.Type;
+
+/**
+ * Server-internal (HubSync): apply a teammate's thread events to its
+ * read-only mirror. `reset` first discards the mirror (a new hub generation).
+ * The decider stamps `metadata.hubOrigin` so reactors leave mirrors alone.
+ */
+const ThreadHubMirrorApplyCommand = Schema.Struct({
+  type: Schema.Literal("thread.hub-mirror.apply"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  hub: HubThreadLink,
+  generation: PositiveInt,
+  reset: Schema.optional(Schema.Literal(true)),
+  events: Schema.Array(
+    Schema.Struct({ seq: PositiveInt, occurredAt: IsoDateTime, event: ThreadHubMirrorEvent }),
+  ),
+  createdAt: IsoDateTime,
+});
+
+/** Server-internal (HubSync): a teammate's comment arrived from the hub. */
+const ThreadHubCommentAddCommand = Schema.Struct({
+  type: Schema.Literal("thread.hub-comment.add"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  commentId: ThreadCommentId,
+  text: TrimmedNonEmptyString.check(Schema.isMaxLength(THREAD_COMMENT_MAX_LENGTH)),
+  author: HubAccount,
+  createdAt: IsoDateTime,
+});
+
+/** Server-internal (HubSync): the hub deleted a comment. */
+const ThreadHubCommentDeleteCommand = Schema.Struct({
+  type: Schema.Literal("thread.hub-comment.delete"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  commentId: ThreadCommentId,
+});
+
+/** Server-internal (HubSync): set or clear a thread's hub link. */
+const ThreadHubLinkSetCommand = Schema.Struct({
+  type: Schema.Literal("thread.hub-link.set"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  hub: Schema.NullOr(HubThreadLink),
+});
+
+const HubOrchestrationCommand = Schema.Union([
+  ThreadHubMirrorApplyCommand,
+  ThreadHubCommentAddCommand,
+  ThreadHubCommentDeleteCommand,
+  ThreadHubLinkSetCommand,
+]);
+export type HubOrchestrationCommand = typeof HubOrchestrationCommand.Type;
+
+export const OrchestrationCommand = Schema.Union([
+  DispatchableClientOrchestrationCommand,
+  InternalOrchestrationCommand,
+  HubOrchestrationCommand,
+]);
+export type OrchestrationCommand = typeof OrchestrationCommand.Type;
 
 /**
  * Which client connection dispatched the command that produced an event.
@@ -2220,6 +2317,17 @@ export const OrchestrationEventMetadata = Schema.Struct({
    * events and on events persisted before team members existed.
    */
   actor: Schema.optional(MemberId),
+  /**
+   * Applied from the team hub (Stage 7): a teammate's mirrored thread event
+   * (with its hub stream position) or a hub comment. Reactors that do work
+   * (providers, checkpoints, settlement, titles, pull requests) skip these.
+   */
+  hubOrigin: Schema.optional(
+    Schema.Struct({
+      generation: Schema.optional(PositiveInt),
+      seq: Schema.optional(PositiveInt),
+    }),
+  ),
 });
 export type OrchestrationEventMetadata = typeof OrchestrationEventMetadata.Type;
 
@@ -2435,6 +2543,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.comment-deleted"),
     payload: ThreadCommentDeletedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.hub-link-set"),
+    payload: ThreadHubLinkSetPayload,
   }),
 ]);
 export type OrchestrationEvent = typeof OrchestrationEvent.Type;

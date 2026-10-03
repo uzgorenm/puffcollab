@@ -40,6 +40,7 @@ import { ProviderSessionDirectoryLive } from "../src/provider/Layers/ProviderSes
 import { ServerSettingsService } from "../src/serverSettings.ts";
 import * as StorageCleanup from "../src/storageCleanup.ts";
 import * as CooperationReactor from "../src/cooperation/CooperationReactor.ts";
+import * as HubSync from "../src/hub/HubSync.ts";
 import { makeProviderServiceLive } from "../src/provider/Layers/ProviderService.ts";
 import { makeCodexAdapter } from "../src/provider/Layers/CodexAdapter.ts";
 import {
@@ -390,6 +391,7 @@ export const makeOrchestrationIntegrationHarness = (
           drain: Effect.void,
         }),
       ),
+      Layer.provideMerge(Layer.mock(HubSync.HubSync)({ start: () => Effect.void })),
       Layer.provideMerge(
         Layer.succeed(CooperationReactor.CooperationReactor, {
           start: () => Effect.void,

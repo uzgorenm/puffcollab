@@ -11,6 +11,7 @@ import {
   IsoDateTime,
   MemberId,
   ThreadVisibility,
+  HubThreadLink,
   ModelSelection,
   NonNegativeInt,
   ProjectId,
@@ -57,6 +58,8 @@ export const ProjectionThread = Schema.Struct({
   createdBy: Schema.optional(Schema.NullOr(MemberId)),
   // See OrchestrationThread.visibility; null means private.
   visibility: Schema.optional(Schema.NullOr(ThreadVisibility)),
+  // See OrchestrationThread.hub; null when not linked to the team hub.
+  hubLink: Schema.optional(Schema.NullOr(HubThreadLink)),
   titleRegenerationRequestId: Schema.optional(Schema.NullOr(CommandId)),
   titleRegenerationStartedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),

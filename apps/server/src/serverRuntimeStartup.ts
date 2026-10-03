@@ -4,6 +4,7 @@ import {
   DEFAULT_MODEL,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_SERVER_SETTINGS,
+  isRemoteHubThread,
   type ServerSettings as ServerSettingsValue,
   type ModelSelection,
   type OrchestrationProjectShell,
@@ -408,6 +409,7 @@ export const markRunningProviderSessionsForContinuation = Effect.gen(function* (
   const { threads } = yield* query.getCommandReadModel();
   const running = threads.filter(
     (thread) =>
+      !isRemoteHubThread(thread) &&
       thread.archivedAt === null &&
       thread.deletedAt === null &&
       thread.session?.status === "running" &&
@@ -534,6 +536,8 @@ export const reconcileProviderSessions = Effect.gen(function* () {
   );
   const orphanedThreads = threads.filter(
     (thread) =>
+      // A team hub mirror's session belongs to its owner's server.
+      !isRemoteHubThread(thread) &&
       thread.session !== null &&
       (thread.session.status === "starting" ||
         thread.session.status === "running" ||
