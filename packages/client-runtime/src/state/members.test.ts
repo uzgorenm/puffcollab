@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MemberId, type MembersListResult, OWNER_MEMBER_ID } from "@t3tools/contracts";
+import { MemberId, type MembersListResult, OWNER_MEMBER_ID, ProjectId } from "@t3tools/contracts";
 
-import { indexMembers, memberAuthorLabel } from "./members.ts";
+import {
+  canRemoveProjectMember,
+  indexMembers,
+  memberAuthorLabel,
+  memberSignInUrl,
+} from "./members.ts";
 
 const ada = MemberId.make("member-ada");
 const roster: MembersListResult = {
@@ -38,5 +43,38 @@ describe("memberAuthorLabel", () => {
   it("shows nothing in a single-person environment", () => {
     const solo = indexMembers({ ...roster, members: roster.members.slice(0, 1) });
     expect(memberAuthorLabel(solo, OWNER_MEMBER_ID, null)).toBeNull();
+  });
+});
+
+describe("memberSignInUrl", () => {
+  it("opens the hosted app for an HTTPS host and the host itself otherwise", () => {
+    const hosted = memberSignInUrl("https://box.tail1.ts.net", "secret", "https://app.example");
+    expect(hosted?.startsWith("https://app.example/pair?host=https%3A%2F%2Fbox.tail1.ts.net")).toBe(
+      true,
+    );
+    expect(hosted).toContain("token=secret");
+    expect(memberSignInUrl("http://192.168.1.5:3773", "secret")).toBe(
+      "http://192.168.1.5:3773/pair#token=secret",
+    );
+  });
+
+  it("gives no link for a loopback address", () => {
+    expect(memberSignInUrl("http://localhost:3773", "secret")).toBeNull();
+    expect(memberSignInUrl("http://127.0.0.1:3773", "secret")).toBeNull();
+    expect(memberSignInUrl(null, "secret")).toBeNull();
+  });
+});
+
+describe("canRemoveProjectMember", () => {
+  const bob = MemberId.make("member-bob");
+  const projectMembers = { projectId: ProjectId.make("p"), memberIds: [ada, bob], creatorId: ada };
+
+  it("lets the creator and admins remove others, never themselves", () => {
+    const check = (viewerId: MemberId, viewerIsAdmin: boolean, targetId: MemberId) =>
+      canRemoveProjectMember({ projectMembers, viewerId, viewerIsAdmin, targetId });
+    expect(check(ada, false, bob)).toBe(true);
+    expect(check(bob, false, ada)).toBe(false);
+    expect(check(OWNER_MEMBER_ID, true, ada)).toBe(true);
+    expect(check(ada, false, ada)).toBe(false);
   });
 });

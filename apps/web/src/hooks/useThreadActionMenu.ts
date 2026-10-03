@@ -1,4 +1,5 @@
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
+import { openProjectPeopleDialog } from "../components/team/projectPeopleDialogStore";
 import { scopeProjectRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   type AtomCommandResult,
@@ -185,6 +186,12 @@ export function useThreadActionMenu(input: {
           }
         };
         switch (action) {
+          case "invite-people":
+            openProjectPeopleDialog({
+              environmentId: thread.environmentId,
+              projectId: thread.projectId,
+            });
+            return;
           case "team-overview":
             void router.navigate({
               to: "/team/$environmentId/$projectId",

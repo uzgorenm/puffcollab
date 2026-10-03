@@ -11,6 +11,7 @@ export type ThreadActionMenuId =
   | "filter-by-project"
   | "project-settings"
   | "team-overview"
+  | "invite-people"
   | "pin"
   | "unpin"
   | "settle"
@@ -240,6 +241,7 @@ function buildAllThreadActionMenuItems(
     },
     { id: "project-settings", label: "Project settings", icon: "settings" },
     { id: "team-overview", label: "Team overview", icon: "users" },
+    { id: "invite-people", label: "Invite people", icon: "user-plus" },
     // Archive removes the thread from the sidebar while keeping its
     // conversation under Settings > Archived threads — distinct from Settle
     // (stays visible in the Settled shelf) and Delete (clears history for

@@ -1,4 +1,5 @@
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
+import { openProjectPeopleDialog } from "./team/projectPeopleDialogStore";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
@@ -4292,6 +4293,12 @@ export default function Sidebar() {
             return;
           case "team-overview":
             openTeamOverview(scopeProjectRef(thread.environmentId, thread.projectId));
+            return;
+          case "invite-people":
+            openProjectPeopleDialog({
+              environmentId: thread.environmentId,
+              projectId: thread.projectId,
+            });
             return;
           case "new-thread-on-branch": {
             // Explicit branch carry-over: reuse the thread's worktree when it

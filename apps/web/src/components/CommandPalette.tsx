@@ -1,5 +1,6 @@
 "use client";
 
+import { openProjectPeopleDialog } from "./team/projectPeopleDialogStore";
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 
@@ -70,6 +71,7 @@ import {
   TextSearchIcon,
   GitCompareArrowsIcon,
   LockIcon,
+  UserPlusIcon,
   UsersIcon,
 } from "lucide-react";
 import {
@@ -2367,6 +2369,17 @@ function OpenCommandPaletteDialog(props: {
           to: "/team/$environmentId/$projectId",
           params: { environmentId: teamOverviewTarget.environmentId, projectId },
         });
+      },
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:invite-people",
+      searchTerms: ["invite", "people", "add", "member", "teammate", "share", "project", "leave"],
+      title: "Invite people to project",
+      ...(contextualProjectGroup ? { description: contextualProjectGroup.displayName } : {}),
+      icon: <UserPlusIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openProjectPeopleDialog({ environmentId: teamOverviewTarget.environmentId, projectId });
       },
     });
   }

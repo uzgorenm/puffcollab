@@ -5,6 +5,7 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
+import { openProjectPeopleDialog } from "../team/projectPeopleDialogStore";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { type EnvironmentId, type ProjectIconOverride } from "@t3tools/contracts";
@@ -492,6 +493,29 @@ function ProjectDetail({
         <ProjectDefaultsSettings category="project" />
         <ProjectActionsSettings />
         {hasMultipleCheckouts ? checkoutChoices : null}
+        <SettingsSection title="People">
+          {group.memberProjects.map((member) => (
+            <SettingsRow
+              key={memberKey(member)}
+              title={hasMultipleCheckouts ? `People · ${member.title}` : "People"}
+              description="See who is in this project, invite teammates or someone new, or leave."
+              control={
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() =>
+                    openProjectPeopleDialog({
+                      environmentId: member.environmentId,
+                      projectId: member.id,
+                    })
+                  }
+                >
+                  Invite people
+                </Button>
+              }
+            />
+          ))}
+        </SettingsSection>
         <SettingsSection title="Danger">
           <SettingsRow
             title={

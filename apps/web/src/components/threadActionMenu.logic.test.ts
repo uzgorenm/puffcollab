@@ -53,6 +53,7 @@ describe("buildThreadActionMenuItems", () => {
       "copy",
       "project-settings",
       "team-overview",
+      "invite-people",
       "archive",
       "delete",
     ]);
@@ -67,7 +68,8 @@ describe("buildThreadActionMenuItems", () => {
       icon: "settings",
     });
     expect(items[copyIndex + 2]?.id).toBe("team-overview");
-    expect(items[copyIndex + 3]?.id).toBe("archive");
+    expect(items[copyIndex + 3]?.id).toBe("invite-people");
+    expect(items[copyIndex + 4]?.id).toBe("archive");
   });
 
   it("offers project filtering only for surfaces with a scoped thread list", () => {
@@ -203,12 +205,14 @@ describe("buildThreadActionMenuItems", () => {
         "copy",
         "project-settings",
         "team-overview",
+        "invite-people",
       ]);
       expect(ids({ ...baseState, collaboration: { ...follower, isAdmin: true } })).toEqual([
         "mark-unread",
         "copy",
         "project-settings",
         "team-overview",
+        "invite-people",
         "archive",
         "delete",
       ]);

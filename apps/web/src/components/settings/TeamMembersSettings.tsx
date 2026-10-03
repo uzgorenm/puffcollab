@@ -2,13 +2,13 @@ import {
   type EnvironmentId,
   type Member,
   type MemberCredentialResult,
+  type MemberId,
   OWNER_MEMBER_ID,
   type ProjectId,
 } from "@t3tools/contracts";
 import { useMemo, useState } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
-import { useRelayEnvironmentDiscovery } from "~/state/environments";
 import { useProjects } from "../../state/entities";
 import { memberEnvironment, useEnvironmentMembers } from "../../state/members";
 import { useEnvironmentQuery } from "../../state/query";
@@ -17,30 +17,10 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { toastManager } from "../ui/toast";
-import { resolveHostedPairingUrl } from "./pairingUrls";
+import { type SignInUrlResolver, useConnectSignInUrl } from "../team/useSignInUrlResolver";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 
 const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-
-/** Builds the link a teammate opens to sign in; null when only the code can be shared. */
-type SignInUrlResolver = (credential: string) => string | null;
-
-/**
- * The T3 Connect address of this environment, when the admin's client knows
- * it. Its HTTPS tunnel is reachable from anywhere, so a teammate can sign in
- * through the hosted app without being on the host's network.
- */
-function useConnectSignInUrl(environmentId: EnvironmentId): SignInUrlResolver | null {
-  const discovery = useRelayEnvironmentDiscovery();
-  const httpBaseUrl = discovery.environments.get(environmentId)?.environment.endpoint.httpBaseUrl;
-  return useMemo(
-    () =>
-      httpBaseUrl === undefined
-        ? null
-        : (credential: string) => resolveHostedPairingUrl(httpBaseUrl, credential),
-    [httpBaseUrl],
-  );
-}
 
 function AddMemberRow({ environmentId }: { environmentId: EnvironmentId }) {
   const addMember = useAtomCommand(memberEnvironment.add);
@@ -105,7 +85,9 @@ function AddMemberRow({ environmentId }: { environmentId: EnvironmentId }) {
   );
 }
 
-function ProjectMembershipToggle({
+// Admins add nobody directly: a project row invites, cancels a pending
+// invitation, or removes the member once they have accepted.
+function ProjectMembershipRow({
   environmentId,
   projectId,
   title,
@@ -119,32 +101,82 @@ function ProjectMembershipToggle({
   const projectMembers = useEnvironmentQuery(
     memberEnvironment.projectMembers({ environmentId, input: { projectId } }),
   );
-  const addProjectMember = useAtomCommand(memberEnvironment.addProjectMember);
+  const invitations = useEnvironmentQuery(
+    memberEnvironment.projectInvitations({ environmentId, input: { projectId } }),
+  );
+  const invite = useAtomCommand(memberEnvironment.invite);
+  const cancel = useAtomCommand(memberEnvironment.cancelInvitation);
   const removeProjectMember = useAtomCommand(memberEnvironment.removeProjectMember);
   const isMember = projectMembers.data?.memberIds.includes(member.memberId) ?? false;
+  const pending = invitations.data?.invitations.find(
+    (invitation) => invitation.inviteeId === member.memberId && invitation.state === "pending",
+  );
+  const loading = projectMembers.data === null || invitations.data === null;
 
   return (
-    <label className="flex items-center gap-1.5 text-xs">
-      <Checkbox
-        checked={isMember}
-        disabled={projectMembers.data === null}
-        onCheckedChange={(checked) => {
-          const command = checked === true ? addProjectMember : removeProjectMember;
-          void command({ environmentId, input: { projectId, memberId: member.memberId } });
-        }}
-      />
-      <span className="truncate">{title}</span>
-    </label>
+    <div className="flex items-center gap-2 text-xs">
+      <span className="min-w-0 flex-1 truncate">
+        {title}
+        {isMember ? null : pending ? (
+          <span className="text-muted-foreground"> · invited</span>
+        ) : null}
+      </span>
+      {loading ? null : isMember ? (
+        <Button
+          size="xs"
+          variant="ghost-destructive"
+          onClick={() =>
+            void removeProjectMember({
+              environmentId,
+              input: { projectId, memberId: member.memberId },
+            })
+          }
+        >
+          Remove
+        </Button>
+      ) : pending ? (
+        <Button
+          size="xs"
+          variant="ghost-muted"
+          onClick={() =>
+            void cancel({ environmentId, input: { invitationId: pending.invitationId } })
+          }
+        >
+          Cancel invite
+        </Button>
+      ) : (
+        <Button
+          size="xs"
+          variant="ghost-muted"
+          onClick={() =>
+            void invite({ environmentId, input: { projectId, memberId: member.memberId } })
+          }
+        >
+          Invite
+        </Button>
+      )}
+    </div>
   );
+}
+
+function memberDescription(member: Member, members: ReadonlyMap<MemberId, Member>): string {
+  const parts = [member.role === "admin" ? "Admin" : "Member"];
+  if (member.invitedBy != null) {
+    parts.push(`invited by ${members.get(member.invitedBy)?.displayName ?? "a former member"}`);
+  }
+  if (member.pending === true) parts.push("has not signed in yet");
+  return parts.join(", ");
 }
 
 function MemberRow({
   environmentId,
   member,
+  members,
   resolveSignInUrl,
 }: {
   environmentId: EnvironmentId;
   member: Member;
+  members: ReadonlyMap<MemberId, Member>;
   resolveSignInUrl: SignInUrlResolver;
 }) {
   const issueCredential = useAtomCommand(memberEnvironment.issueCredential);
@@ -177,7 +209,7 @@ function MemberRow({
   return (
     <SettingsRow
       title={`${member.displayName} (@${member.username})`}
-      description={member.role === "admin" ? "Admin" : "Member"}
+      description={memberDescription(member, members)}
       control={
         isOwner ? null : (
           <div className="flex items-center gap-1">
@@ -235,12 +267,12 @@ function MemberRow({
         </div>
       ) : null}
       {showProjects ? (
-        <div className="grid gap-1.5 pt-2 sm:grid-cols-2">
+        <div className="grid gap-x-4 gap-y-1 pt-2 sm:grid-cols-2">
           {environmentProjects.length === 0 ? (
             <p className="text-xs text-muted-foreground">No projects yet.</p>
           ) : (
             environmentProjects.map((project) => (
-              <ProjectMembershipToggle
+              <ProjectMembershipRow
                 key={project.id}
                 environmentId={environmentId}
                 projectId={project.id}
@@ -257,8 +289,8 @@ function MemberRow({
 
 /**
  * Puff Collab team: admins add and remove members, mint their one-time
- * sign-in links, and choose which projects each member works in. Admins
- * see every project.
+ * sign-in links, and invite members to projects (they join once they
+ * accept). Admins see every project and who invited whom.
  */
 export function TeamMembersSettings({
   environmentId,
@@ -281,6 +313,7 @@ export function TeamMembersSettings({
           key={member.memberId}
           environmentId={environmentId}
           member={member}
+          members={members}
           resolveSignInUrl={resolveSignInUrl}
         />
       ))}

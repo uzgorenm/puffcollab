@@ -20,7 +20,7 @@ import {
   type TeamOverviewState,
 } from "@t3tools/client-runtime/state/team-overview";
 import { Link } from "@tanstack/react-router";
-import { GitBranchIcon } from "lucide-react";
+import { GitBranchIcon, UserPlusIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { isElectron } from "../../env";
@@ -41,6 +41,7 @@ import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
+import { openProjectPeopleDialog } from "./projectPeopleDialogStore";
 
 type Members = ReadonlyMap<MemberId, Member>;
 
@@ -476,9 +477,17 @@ export function TeamOverviewView({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       <WorkspacePageHeader electron={isElectron} className="bg-background">
-        <h1 className="truncate font-medium text-sm">
+        <h1 className="min-w-0 flex-1 truncate font-medium text-sm">
           {project ? `${project.title} · Team` : "Team"}
         </h1>
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={() => openProjectPeopleDialog({ environmentId, projectId })}
+        >
+          <UserPlusIcon />
+          Invite people
+        </Button>
       </WorkspacePageHeader>
       <div className="topbar-scroll-fade min-h-0 flex-1 overflow-y-auto">
         <WorkspacePageContainer width="wide">
