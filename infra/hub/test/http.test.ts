@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - PKCE verifiers like a local server makes them.
 import * as NodeCrypto from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";

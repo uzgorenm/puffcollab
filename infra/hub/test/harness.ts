@@ -1,14 +1,14 @@
-// @effect-diagnostics globalFetch:off preferSchemaOverJson:off globalDate:off - test harness driving the real Worker in workerd over HTTP and WebSockets.
+// @effect-diagnostics globalFetch:off preferSchemaOverJson:off globalDate:off nodeBuiltinImport:off globalTimers:off - test harness driving the real Worker in workerd over HTTP and WebSockets.
 /**
  * Runs the bundled hub Worker in workerd through Miniflare, with D1, both
  * Durable Object classes and a fake GitHub. Tests talk to it exactly like a
  * browser or a local Puff Collab server would.
  */
 import * as NodeCrypto from "node:crypto";
-import * as NodeFs from "node:fs";
-import * as NodeOs from "node:os";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import * as NodeUrl from "node:url";
+import * as NodeURL from "node:url";
 
 import {
   HUB_PROTOCOL_RANGE,
@@ -19,7 +19,7 @@ import {
 import * as Esbuild from "esbuild";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 
-const HUB_ROOT = NodePath.dirname(NodePath.dirname(NodeUrl.fileURLToPath(import.meta.url)));
+const HUB_ROOT = NodePath.dirname(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)));
 export const HUB_URL = "http://hub.test";
 export const WORKER_NAME = "puffcollab-hub";
 
@@ -28,7 +28,7 @@ let bundlePath: Promise<string> | null = null;
 /** Bundles src/worker.ts once per test process, as wrangler would. */
 const bundle = () =>
   (bundlePath ??= (async () => {
-    const outdir = NodeFs.mkdtempSync(NodePath.join(NodeOs.tmpdir(), "puffcollab-hub-bundle-"));
+    const outdir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "puffcollab-hub-bundle-"));
     const outfile = NodePath.join(outdir, "worker.mjs");
     await Esbuild.build({
       entryPoints: [NodePath.join(HUB_ROOT, "src/worker.ts")],
@@ -76,11 +76,11 @@ const fakeGithub = (users: Map<string, GithubUser>) => async (request: Request) 
 };
 
 const migrationStatements = () =>
-  NodeFs.readdirSync(NodePath.join(HUB_ROOT, "migrations"))
+  NodeFS.readdirSync(NodePath.join(HUB_ROOT, "migrations"))
     .filter((file) => file.endsWith(".sql"))
     .sort()
     .flatMap((file) =>
-      NodeFs.readFileSync(NodePath.join(HUB_ROOT, "migrations", file), "utf8")
+      NodeFS.readFileSync(NodePath.join(HUB_ROOT, "migrations", file), "utf8")
         .split("\n")
         .filter((line) => !line.trimStart().startsWith("--"))
         .join("\n")
@@ -97,11 +97,15 @@ export interface HubOptions {
 
 export class TestHub {
   private nextGithubId = 1000;
+  private linkCount = 1;
 
-  private constructor(
-    readonly mf: Miniflare,
-    readonly users: Map<string, GithubUser>,
-  ) {}
+  readonly mf: Miniflare;
+  readonly users: Map<string, GithubUser>;
+
+  private constructor(mf: Miniflare, users: Map<string, GithubUser>) {
+    this.mf = mf;
+    this.users = users;
+  }
 
   static async start(options: HubOptions = {}): Promise<TestHub> {
     const users = new Map<string, GithubUser>();
@@ -112,7 +116,7 @@ export class TestHub {
           {
             type: "ESModule",
             path: "worker.mjs",
-            contents: NodeFs.readFileSync(await bundle(), "utf8"),
+            contents: NodeFS.readFileSync(await bundle(), "utf8"),
           },
         ],
         compatibilityDate: "2026-09-01",
@@ -198,11 +202,16 @@ export class TestHub {
     const verifier = NodeCrypto.randomBytes(32).toString("base64url");
     const challenge = NodeCrypto.createHash("sha256").update(verifier).digest("base64url");
     const started = (await (
-      await this.json("/v1/link/requests", {
-        environmentLabel,
-        codeChallenge: challenge,
-        codeChallengeMethod: "S256",
-      })
+      await this.json(
+        "/v1/link/requests",
+        { environmentLabel, codeChallenge: challenge, codeChallengeMethod: "S256" },
+        // Each test environment links from its own address, under the per-IP start limit.
+        {
+          headers: {
+            "CF-Connecting-IP": `10.0.${(this.linkCount >> 8) & 255}.${this.linkCount++ & 255}`,
+          },
+        },
+      )
     ).json()) as { requestId: string; userCode: string };
     const decided = await this.json(
       "/v1/link/decision",
@@ -266,11 +275,14 @@ type ServerMessage = HubServerMessage & Record<string, any>;
 export class SyncClient {
   readonly received: Array<ServerMessage> = [];
   closed: { code: number; reason: string } | null = null;
-  private cursor = 0;
+  private readonly consumed = new Set<number>();
   private waiters: Array<() => void> = [];
   private requestCounter = 0;
 
-  constructor(readonly ws: WebSocket) {
+  readonly ws: WebSocket;
+
+  constructor(ws: WebSocket) {
+    this.ws = ws;
     (ws as unknown as { accept(): void }).accept();
     ws.addEventListener("message", (event) => {
       const data = (event as MessageEvent).data;
@@ -311,15 +323,19 @@ export class SyncClient {
     return `r${this.requestCounter}`;
   }
 
-  /** The next unread frame matching `predicate`; frames before it are skipped. */
+  /** The oldest unconsumed frame matching `predicate`, waiting for it if needed. Other frames stay unread. */
   async next<T extends ServerMessage = ServerMessage>(
     predicate: (message: ServerMessage) => boolean = () => true,
     timeoutMs = 10_000,
   ): Promise<T> {
     for (;;) {
-      while (this.cursor < this.received.length) {
-        const message = this.received[this.cursor++]!;
-        if (predicate(message)) return message as T;
+      for (let index = 0; index < this.received.length; index += 1) {
+        if (this.consumed.has(index)) continue;
+        const message = this.received[index]!;
+        if (predicate(message)) {
+          this.consumed.add(index);
+          return message as T;
+        }
       }
       if (this.closed) throw new Error(`socket closed (${this.closed.code}) while waiting`);
       await this.waitForChange(timeoutMs);
