@@ -1,0 +1,6 @@
+# Copy to .dev.vars (gitignored) for `wrangler dev` / `node scripts/lan.ts`.
+# On Cloudflare use `wrangler secret put` instead; never commit real values.
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+# DEV ONLY: sign in by typing a login, without GitHub (offline LAN). Ignored on https hubs.
+# HUB_DEV_LOCAL_ACCOUNTS=1
