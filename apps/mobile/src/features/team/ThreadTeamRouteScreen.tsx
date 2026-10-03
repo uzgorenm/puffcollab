@@ -9,6 +9,7 @@ import { AppText as Text } from "../../components/AppText";
 import { ScreenScrollView } from "../../components/ScreenScrollView";
 import { useCooperationInboxForThread } from "../../state/cooperation";
 import { useThreadShell } from "../../state/entities";
+import { useHubLinkedProjectsKey } from "../../state/hub";
 import { useEnvironmentMembers } from "../../state/members";
 import { threadCollaborationView } from "../../state/thread-collaboration";
 import { threadEnvironment, useEnvironmentThread } from "../../state/threads";
@@ -16,6 +17,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { SettingsSection } from "../settings/components/SettingsSection";
 import { CooperationInboxSection, CooperationSection } from "./CooperationSection";
+import { HubProjectLinkSection } from "./HubTeamSections";
 import { RelatedThreadsSection } from "./RelatedThreadsSection";
 import { followingThreadNotice } from "./team-presentation";
 import { TeamCardBody, TeamRow } from "./TeamRows";
@@ -41,13 +43,20 @@ export function ThreadTeamRouteScreen(props: ThreadTeamRouteProps) {
   // Shares the thread screen's subscription; this route sits on top of it.
   const detail = Option.getOrNull(useEnvironmentThread(environmentId, threadId).data);
   const roster = useEnvironmentMembers(environmentId);
+  const hubProjectsKey = useHubLinkedProjectsKey(environmentId);
   const collaboration = useMemo(
     () =>
       threadCollaborationView(
-        { createdBy: shell?.createdBy, visibility: shell?.visibility },
+        {
+          createdBy: shell?.createdBy,
+          visibility: shell?.visibility,
+          hub: shell?.hub,
+          projectId: shell?.projectId,
+        },
         roster,
+        hubProjectsKey,
       ),
-    [roster, shell?.createdBy, shell?.visibility],
+    [roster, hubProjectsKey, shell?.createdBy, shell?.visibility, shell?.hub, shell?.projectId],
   );
   const inboxItems = useCooperationInboxForThread(
     collaboration.isOwner && collaboration.teamEnabled ? environmentId : null,
@@ -104,7 +113,7 @@ export function ThreadTeamRouteScreen(props: ThreadTeamRouteProps) {
                 ) : (
                   <TeamCardBody>
                     <Text className="text-sm text-foreground-muted">
-                      Sharing is available once an admin adds team members to this environment.
+                      Sharing is available once this project is linked to the team hub.
                     </Text>
                   </TeamCardBody>
                 )
@@ -140,6 +149,10 @@ export function ThreadTeamRouteScreen(props: ThreadTeamRouteProps) {
               <CooperationSection environmentId={environmentId} threadId={threadId} />
             ) : null}
 
+            {collaboration.remote ? null : (
+              <HubProjectLinkSection environmentId={environmentId} projectId={shell.projectId} />
+            )}
+
             <SettingsSection>
               <TeamRow
                 icon="person.2"
@@ -156,7 +169,7 @@ export function ThreadTeamRouteScreen(props: ThreadTeamRouteProps) {
                 divided
                 icon="person.badge.plus"
                 title="Invite people"
-                detail="Invite teammates or someone new to this project, or leave it."
+                detail="Invite people to this project, or leave it."
                 onPress={() =>
                   navigation.navigate("ProjectPeople", {
                     environmentId: String(environmentId),

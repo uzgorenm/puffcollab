@@ -1,7 +1,8 @@
-import type { EnvironmentId, ProjectInvitation } from "@t3tools/contracts";
+import type { EnvironmentId, HubLocalInvitation, ProjectInvitation } from "@t3tools/contracts";
 import { View } from "react-native";
 
 import { useEnvironments } from "../../state/environments";
+import { hubEnvironment, useHubInvitationGroups, useIsHubLinked } from "../../state/hub";
 import {
   memberEnvironment,
   useEnvironmentMembers,
@@ -39,7 +40,59 @@ function InvitationRow(props: {
   );
 }
 
+function HubInvitationRow(props: {
+  readonly environmentId: EnvironmentId;
+  readonly invitation: HubLocalInvitation;
+  readonly divided: boolean;
+}) {
+  const respond = useAtomCommand(hubEnvironment.respondInvitation, "Answer invitation");
+  const answer = (decision: "accept" | "decline") =>
+    void respond({
+      environmentId: props.environmentId,
+      input: { invitationId: props.invitation.invitationId, decision },
+    });
+  return (
+    <TeamCardBody divided={props.divided}>
+      <Text className="text-base text-foreground">{props.invitation.projectTitle}</Text>
+      <TeamMutedText>{`@${props.invitation.inviterLogin} invited you to this project on the team hub.`}</TeamMutedText>
+      <View className="flex-row justify-end gap-2">
+        <TeamPillButton label="Decline" onPress={() => answer("decline")} />
+        <TeamPillButton label="Accept" tone="primary" onPress={() => answer("accept")} />
+      </View>
+    </TeamCardBody>
+  );
+}
+
+function HubInvitations(props: { readonly environmentId: EnvironmentId }) {
+  const { incoming } = useHubInvitationGroups(props.environmentId);
+  if (incoming.length === 0) return null;
+  return (
+    <View className="pb-3">
+      <SettingsSection title="Team hub invitations">
+        {incoming.map((invitation, index) => (
+          <HubInvitationRow
+            key={invitation.invitationId}
+            environmentId={props.environmentId}
+            invitation={invitation}
+            divided={index > 0}
+          />
+        ))}
+      </SettingsSection>
+    </View>
+  );
+}
+
+// Team hub invitations replace the environment's own once it is linked to a hub.
 function EnvironmentInvitations(props: { readonly environmentId: EnvironmentId }) {
+  const hubLinked = useIsHubLinked(props.environmentId);
+  return hubLinked ? (
+    <HubInvitations environmentId={props.environmentId} />
+  ) : (
+    <LocalInvitations environmentId={props.environmentId} />
+  );
+}
+
+function LocalInvitations(props: { readonly environmentId: EnvironmentId }) {
   const invitations = useMyProjectInvitations(props.environmentId);
   const { members } = useEnvironmentMembers(props.environmentId);
   if (invitations.length === 0) return null;

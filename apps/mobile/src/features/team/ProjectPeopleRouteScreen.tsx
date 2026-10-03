@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text, AppTextInput } from "../../components/AppText";
 import { ScreenScrollView } from "../../components/ScreenScrollView";
 import { useProject } from "../../state/entities";
+import { useIsHubLinked } from "../../state/hub";
 import {
   memberEnvironment,
   useEnvironmentMembers,
@@ -29,6 +30,7 @@ import { usePreparedConnection } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { SettingsSection } from "../settings/components/SettingsSection";
+import { HubProjectPeopleSections } from "./HubTeamSections";
 import { teamMemberName } from "./team-presentation";
 import { TeamPillButton } from "./TeamPillButton";
 import { TeamCardBody, TeamMutedText, TeamRow } from "./TeamRows";
@@ -47,11 +49,51 @@ const STATE_LABELS: Record<ProjectInvitation["state"], string> = {
 };
 
 /**
+ * One project's people. Once the environment is linked to the team hub
+ * (Stage 7), people are invited by GitHub login on the hub; otherwise the
+ * environment's own roster and invitations apply.
+ */
+export function ProjectPeopleRouteScreen(props: ProjectPeopleRouteProps) {
+  const environmentId = EnvironmentId.make(props.route.params.environmentId);
+  const hubLinked = useIsHubLinked(environmentId);
+  return hubLinked ? (
+    <HubProjectPeopleScreen {...props} />
+  ) : (
+    <LocalProjectPeopleScreen {...props} />
+  );
+}
+
+function HubProjectPeopleScreen(props: ProjectPeopleRouteProps) {
+  const environmentId = EnvironmentId.make(props.route.params.environmentId);
+  const projectId = ProjectId.make(props.route.params.projectId);
+  const insets = useSafeAreaInsets();
+  const project = useProject(
+    useMemo(() => scopeProjectRef(environmentId, projectId), [environmentId, projectId]),
+  );
+  return (
+    <SettingsScreen
+      title={project ? `People · ${project.title}` : "People"}
+      formSheet={Platform.OS === "ios"}
+    >
+      <ScreenScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        className="flex-1"
+        contentContainerClassName="gap-6 px-5 pt-4"
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+      >
+        <HubProjectPeopleSections environmentId={environmentId} projectId={projectId} />
+      </ScreenScrollView>
+    </SettingsScreen>
+  );
+}
+
+/**
  * One project's people (Puff Collab): members with Leave and Remove,
  * invitations with Cancel and Invite again, and inviting a teammate or
  * someone new, whose one-time sign-in link is shared from here.
  */
-export function ProjectPeopleRouteScreen(props: ProjectPeopleRouteProps) {
+function LocalProjectPeopleScreen(props: ProjectPeopleRouteProps) {
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const projectId = ProjectId.make(props.route.params.projectId);
   const insets = useSafeAreaInsets();

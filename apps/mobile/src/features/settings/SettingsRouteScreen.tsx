@@ -10,6 +10,7 @@ import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { NativeHeaderToolbar } from "../../native/StackHeader";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SettingsRow } from "./components/SettingsRow";
+import { TeamHubSettingsRow } from "../team/TeamHubSettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
 import {
@@ -192,6 +193,7 @@ function SettingsIndexSections() {
           target="SettingsEnvironmentMaintenance"
           disabled={noServerTargets}
         />
+        <TeamHubSettingsRow environmentId={selectedTargets[0]?.environmentId ?? null} />
       </SettingsSection>
 
       <SettingsSection title="App">

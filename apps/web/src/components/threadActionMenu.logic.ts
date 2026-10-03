@@ -12,6 +12,7 @@ export type ThreadActionMenuId =
   | "project-settings"
   | "team-overview"
   | "invite-people"
+  | "team-hub"
   | "pin"
   | "unpin"
   | "settle"
@@ -69,6 +70,11 @@ export interface ThreadActionMenuState {
    * non-controlling items; admins may still archive or delete. Absent means
    * the viewer owns the thread (single-user environments).
    */
+  /**
+   * Team hub (Stage 7): present once the environment is linked to a hub
+   * account, so the project items offer linking this thread's project.
+   */
+  readonly teamHub?: { readonly projectLinked: boolean } | null;
   readonly collaboration?: {
     readonly isOwner: boolean;
     readonly isAdmin: boolean;
@@ -242,6 +248,15 @@ function buildAllThreadActionMenuItems(
     { id: "project-settings", label: "Project settings", icon: "settings" },
     { id: "team-overview", label: "Team overview", icon: "users" },
     { id: "invite-people", label: "Invite people", icon: "user-plus" },
+    ...(state.teamHub
+      ? [
+          {
+            id: "team-hub" as const,
+            label: state.teamHub.projectLinked ? "Team hub link" : "Link to team hub",
+            icon: "users",
+          },
+        ]
+      : []),
     // Archive removes the thread from the sidebar while keeping its
     // conversation under Settings > Archived threads — distinct from Settle
     // (stays visible in the Settled shelf) and Delete (clears history for

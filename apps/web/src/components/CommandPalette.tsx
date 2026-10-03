@@ -1,6 +1,8 @@
 "use client";
 
 import { openProjectPeopleDialog } from "./team/projectPeopleDialogStore";
+import { openHubProjectDialog } from "./team/hubProjectDialogStore";
+import { readTeamHubMenuState } from "../state/hub";
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 
@@ -2382,6 +2384,21 @@ function OpenCommandPaletteDialog(props: {
         openProjectPeopleDialog({ environmentId: teamOverviewTarget.environmentId, projectId });
       },
     });
+    // Team hub (Stage 7): offered once this environment is linked to a hub account.
+    const teamHub = readTeamHubMenuState(teamOverviewTarget.environmentId, projectId);
+    if (teamHub !== null) {
+      actionItems.push({
+        kind: "action",
+        value: "action:team-hub",
+        searchTerms: ["team", "hub", "link", "unlink", "sync", "join", "project", "github"],
+        title: teamHub.projectLinked ? "Team hub link for project" : "Link project to team hub",
+        ...(contextualProjectGroup ? { description: contextualProjectGroup.displayName } : {}),
+        icon: <UsersIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          openHubProjectDialog({ environmentId: teamOverviewTarget.environmentId, projectId });
+        },
+      });
+    }
   }
 
   const rootGroups = buildRootGroups({ actionItems, recentThreadItems });

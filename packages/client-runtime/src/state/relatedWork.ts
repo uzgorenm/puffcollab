@@ -1,5 +1,7 @@
 import {
   type EnvironmentId,
+  type HubThreadLink,
+  isRemoteHubThread,
   type MemberId,
   type OrchestrationThreadShell,
   type RelatedThreadLink,
@@ -65,11 +67,18 @@ export function createRelatedWorkEnvironmentAtoms<R, E>(
   };
 }
 
-/** Threads without a recorded creator belong to the environment owner. */
+/**
+ * Threads without a recorded creator belong to the environment owner; a
+ * teammate's remote hub mirror never belongs to the viewer.
+ */
 export function isRelatedThreadOwner(
-  thread: { readonly createdBy?: MemberId | null | undefined },
+  thread: {
+    readonly createdBy?: MemberId | null | undefined;
+    readonly hub?: HubThreadLink | undefined;
+  },
   currentMemberId: MemberId | null,
 ): boolean {
+  if (isRemoteHubThread(thread)) return false;
   return currentMemberId !== null && threadOwnerOf(thread) === currentMemberId;
 }
 

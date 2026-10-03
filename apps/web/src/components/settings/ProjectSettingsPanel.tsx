@@ -6,6 +6,7 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { openProjectPeopleDialog } from "../team/projectPeopleDialogStore";
+import { HubProjectSettingsRow } from "./HubProjectSettingsRow";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { type EnvironmentId, type ProjectIconOverride } from "@t3tools/contracts";
@@ -513,6 +514,14 @@ function ProjectDetail({
                   Invite people
                 </Button>
               }
+            />
+          ))}
+          {group.memberProjects.map((member) => (
+            <HubProjectSettingsRow
+              key={`hub:${memberKey(member)}`}
+              environmentId={member.environmentId}
+              projectId={member.id}
+              title={hasMultipleCheckouts ? `Team hub · ${member.title}` : "Team hub"}
             />
           ))}
         </SettingsSection>

@@ -15,6 +15,7 @@ import { environmentSession } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useRemoteConnections } from "../../state/use-remote-environment-registry";
 import { ConnectionEnvironmentRow } from "../connection/ConnectionEnvironmentRow";
+import { TeamHubSettingsSection } from "../team/HubTeamSections";
 import { SettingsActionRow } from "./components/SettingsActionRow";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
@@ -331,6 +332,7 @@ function EnvironmentDetail({ environmentId }: { readonly environmentId: Environm
                       </View>
                     ))}
                 </SettingsSection>
+                <TeamHubSettingsSection environmentId={environmentId} />
               </>
             ) : null}
           </>

@@ -35,6 +35,28 @@ function allIds(state: ThreadActionMenuState): string[] {
 }
 
 describe("buildThreadActionMenuItems", () => {
+  it("offers the team hub item after Invite people only once the environment is linked", () => {
+    expect(ids(baseState)).not.toContain("team-hub");
+    const unlinked = buildThreadActionMenuItems({
+      ...baseState,
+      teamHub: { projectLinked: false },
+    });
+    const inviteIndex = unlinked.findIndex((item) => item.id === "invite-people");
+    expect(unlinked[inviteIndex + 1]).toMatchObject({ id: "team-hub", label: "Link to team hub" });
+    const linked = buildThreadActionMenuItems({ ...baseState, teamHub: { projectLinked: true } });
+    expect(linked.find((item) => item.id === "team-hub")?.label).toBe("Team hub link");
+  });
+
+  it("keeps a remote hub thread's follower to read-only items with no housekeeping", () => {
+    const remote = ids({
+      ...baseState,
+      collaboration: { isOwner: false, isAdmin: false, teamEnabled: true, visibility: "shared" },
+    });
+    for (const id of ["pin", "settle", "snooze", "rename", "visibility", "archive", "delete"]) {
+      expect(remote).not.toContain(id);
+    }
+  });
+
   it("hides lifecycle items when the environment lacks the capabilities", () => {
     expect(
       ids({

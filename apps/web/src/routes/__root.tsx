@@ -21,6 +21,7 @@ import { CommandPalette } from "../components/CommandPalette";
 import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { ProjectPeopleDialogHost } from "../components/team/ProjectPeopleDialog";
+import { HubProjectDialogHost } from "../components/team/HubProjectDialog";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
 import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
@@ -237,6 +238,7 @@ function RootRouteView() {
           <QueuedMessageSender />
           <ConfirmDialogHost />
           <ProjectPeopleDialogHost />
+          <HubProjectDialogHost />
           <CustomSnoozeDialogHost />
           <SlowRpcRequestToastCoordinator />
           <ProjectCloneToastCoordinator />
