@@ -1,5 +1,6 @@
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
 import { openProjectPeopleDialog } from "../components/team/projectPeopleDialogStore";
+import { openHubProjectDialog } from "../components/team/hubProjectDialogStore";
 import { scopeProjectRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   type AtomCommandResult,
@@ -43,6 +44,7 @@ import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { useThreadActions } from "./useThreadActions";
 import { readThreadCollaboration } from "../state/threadCollaboration";
+import { readTeamHubMenuState } from "../state/hub";
 import { useThreadCollaborationActions } from "./useThreadCollaborationActions";
 
 function failureToast(title: string, error: unknown) {
@@ -160,6 +162,7 @@ export function useThreadActionMenu(input: {
           supports,
           snoozePresets,
           collaboration: readThreadCollaboration(threadRef.environmentId, thread),
+          teamHub: readTeamHubMenuState(threadRef.environmentId, thread.projectId),
         });
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -186,6 +189,12 @@ export function useThreadActionMenu(input: {
           }
         };
         switch (action) {
+          case "team-hub":
+            openHubProjectDialog({
+              environmentId: thread.environmentId,
+              projectId: thread.projectId,
+            });
+            return;
           case "invite-people":
             openProjectPeopleDialog({
               environmentId: thread.environmentId,

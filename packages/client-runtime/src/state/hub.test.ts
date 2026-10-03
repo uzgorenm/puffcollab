@@ -15,10 +15,12 @@ import {
   groupHubInvitations,
   hasPendingHubInvitation,
   hubConnectionLabel,
+  hubLinkedProjectsKey,
   hubProjectLinkOf,
   hubStatusSummary,
   hubSyncIndicator,
   isHubLinked,
+  isProjectInHubKey,
   parseGithubLoginInput,
   parseHubUrlInput,
 } from "./hub.ts";
@@ -100,6 +102,10 @@ describe("hub status", () => {
     expect(hubProjectLinkOf(linked, projectA)?.hubProjectId).toBe(hubA);
     expect(hubProjectLinkOf(linked, ProjectId.make("other"))).toBeNull();
     expect(hubProjectLinkOf(undefined, projectA)).toBeNull();
+    const key = hubLinkedProjectsKey(linked);
+    expect(isProjectInHubKey(key, projectA)).toBe(true);
+    expect(isProjectInHubKey(key, ProjectId.make("project"))).toBe(false);
+    expect(isProjectInHubKey(hubLinkedProjectsKey(null), projectA)).toBe(false);
   });
 });
 

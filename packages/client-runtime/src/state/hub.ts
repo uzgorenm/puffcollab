@@ -11,7 +11,8 @@ import {
   type ProjectId,
   WS_METHODS,
 } from "@t3tools/contracts";
-import type { Atom } from "effect/unstable/reactivity";
+import * as Option from "effect/Option";
+import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
@@ -42,12 +43,25 @@ export function createHubEnvironmentAtoms<R, E>(
       scheduler,
       concurrency,
     });
+  const status = createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+    label: "environment-data:hub:status",
+    tag: WS_METHODS.hubSubscribeStatus,
+  });
   return {
     /** The local server's hub connection, now and after every change. */
-    status: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-      label: "environment-data:hub:status",
-      tag: WS_METHODS.hubSubscribeStatus,
-    }),
+    status,
+    /**
+     * The hub-linked local projects as a stable string (see
+     * `isProjectInHubKey`), so per-row readers don't re-render on every
+     * status push (queue counts change often while syncing).
+     */
+    linkedProjectsKey: Atom.family((environmentId: EnvironmentId) =>
+      Atom.make((get) =>
+        hubLinkedProjectsKey(
+          Option.getOrNull(AsyncResult.value(get(status({ environmentId, input: {} })))),
+        ),
+      ).pipe(Atom.withLabel(`environment-data:hub:linked-projects:${environmentId}`)),
+    ),
     /** Incoming and outgoing hub invitations, now and after every change. */
     invitations: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:hub:invitations",
@@ -178,6 +192,19 @@ export function hubProjectLinkOf(
   projectId: ProjectId,
 ): HubLocalProjectLink | null {
   return status?.projects.find((link) => link.projectId === projectId) ?? null;
+}
+
+/** The linked local project ids as one comparable string. */
+export function hubLinkedProjectsKey(status: HubLocalStatus | null | undefined): string {
+  if (!status || status.projects.length === 0) return "";
+  return status.projects
+    .map((link) => link.projectId)
+    .sort()
+    .join("\n");
+}
+
+export function isProjectInHubKey(key: string, projectId: ProjectId): boolean {
+  return key !== "" && key.split("\n").includes(projectId);
 }
 
 export type HubUrlInputResult =

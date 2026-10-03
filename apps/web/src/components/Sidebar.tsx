@@ -1,5 +1,6 @@
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { openProjectPeopleDialog } from "./team/projectPeopleDialogStore";
+import { openHubProjectDialog } from "./team/hubProjectDialogStore";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
@@ -127,6 +128,7 @@ import {
 import { useThreadActions } from "../hooks/useThreadActions";
 import { useThreadCollaborationActions } from "../hooks/useThreadCollaborationActions";
 import { readThreadCollaboration } from "../state/threadCollaboration";
+import { readTeamHubMenuState } from "../state/hub";
 import { ThreadOwnerBadge } from "./collab/ThreadOwnerBadge";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
@@ -4263,6 +4265,7 @@ export default function Sidebar() {
               },
               snoozePresets,
               collaboration: readThreadCollaboration(thread.environmentId, thread),
+              teamHub: readTeamHubMenuState(thread.environmentId, thread.projectId),
             }),
             position,
           ),
@@ -4293,6 +4296,12 @@ export default function Sidebar() {
             return;
           case "team-overview":
             openTeamOverview(scopeProjectRef(thread.environmentId, thread.projectId));
+            return;
+          case "team-hub":
+            openHubProjectDialog({
+              environmentId: thread.environmentId,
+              projectId: thread.projectId,
+            });
             return;
           case "invite-people":
             openProjectPeopleDialog({

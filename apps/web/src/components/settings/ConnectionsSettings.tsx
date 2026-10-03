@@ -82,6 +82,7 @@ import {
 } from "./EnvironmentRow";
 import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { LoadBalancingSettings } from "./LoadBalancingSettings";
+import { TeamHubSettings } from "./TeamHubSettings";
 import { TeamMembersSettings } from "./TeamMembersSettings";
 import { CooperationAnalysisSettings } from "./CooperationAnalysisSettings";
 import { GitHubRoutingSettings } from "./GitHubRoutingSettings";
@@ -3615,6 +3616,7 @@ export function ConnectionsSettings() {
   return (
     <SettingsPageContainer width="wide">
       {primarySettings}
+      <TeamHubSettings environmentId={primaryEnvironmentId} />
       {currentSessionScopes?.includes(AuthAccessWriteScope) ? (
         <>
           <TeamMembersSettings

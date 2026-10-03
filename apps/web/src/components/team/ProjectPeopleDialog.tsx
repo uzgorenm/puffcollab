@@ -34,6 +34,8 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { toastManager } from "../ui/toast";
+import { useIsHubLinked } from "../../state/hub";
+import { HubProjectPeoplePanel } from "./HubProjectDialog";
 import { useProjectPeopleDialogStore } from "./projectPeopleDialogStore";
 import { type SignInUrlResolver, useSignInUrlResolver } from "./useSignInUrlResolver";
 
@@ -380,6 +382,8 @@ export function ProjectPeopleDialogHost() {
   const project = useProject(
     target === null ? null : scopeProjectRef(target.environmentId, target.projectId),
   );
+  // Team hub (Stage 7): once linked, people are invited by GitHub login on the hub.
+  const hubLinked = useIsHubLinked(target?.environmentId ?? null);
   if (target === null) return null;
   return (
     <Dialog
@@ -392,15 +396,25 @@ export function ProjectPeopleDialogHost() {
         <DialogHeader>
           <DialogTitle>People in {project?.title ?? "this project"}</DialogTitle>
           <DialogDescription>
-            Invited people join once they accept. Anyone in the project can invite.
+            {hubLinked
+              ? "Invite teammates to the hub project by GitHub login. They join once they accept."
+              : "Invited people join once they accept. Anyone in the project can invite."}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
-          <ProjectPeoplePanel
-            environmentId={target.environmentId}
-            projectId={target.projectId}
-            onLeft={close}
-          />
+          {hubLinked ? (
+            <HubProjectPeoplePanel
+              environmentId={target.environmentId}
+              projectId={target.projectId}
+              onNavigate={close}
+            />
+          ) : (
+            <ProjectPeoplePanel
+              environmentId={target.environmentId}
+              projectId={target.projectId}
+              onLeft={close}
+            />
+          )}
         </DialogPanel>
       </DialogPopup>
     </Dialog>
