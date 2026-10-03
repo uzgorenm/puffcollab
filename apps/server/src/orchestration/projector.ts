@@ -14,6 +14,7 @@ import {
   OrchestrationSession,
   OrchestrationThread,
   removeRelatedThreadLink,
+  ThreadHubLinkSetPayload,
   ThreadRelatedThreadLinkedPayload,
   ThreadRelatedThreadUnlinkedPayload,
   upsertRelatedThreadLink,
@@ -621,6 +622,18 @@ export function projectEvent(
           threads: updateThread(nextBase.threads, payload.threadId, {
             visibility: payload.visibility,
             updatedAt: payload.updatedAt,
+          }),
+        })),
+      );
+
+    case "thread.hub-link-set":
+      return decodeForEvent(ThreadHubLinkSetPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: nextBase.threads.map((thread) => {
+            if (thread.id !== payload.threadId) return thread;
+            const { hub: _previous, ...rest } = thread;
+            return payload.hub === null ? rest : { ...rest, hub: payload.hub };
           }),
         })),
       );

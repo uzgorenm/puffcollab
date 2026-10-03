@@ -332,6 +332,7 @@ export const make = Effect.gen(function* () {
   );
 
   const processEvent = (event: OrchestrationEvent) => {
+    if (event.metadata.hubOrigin !== undefined) return Effect.void;
     switch (event.type) {
       case "thread.pull-request-linked":
       case "thread.pull-request-synced":

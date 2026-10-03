@@ -469,6 +469,7 @@ export const make = Effect.gen(function* () {
     yield* forkParked(
       Stream.runForEach(events, (event) =>
         event.type === "thread.deleted" &&
+        event.metadata.hubOrigin === undefined &&
         anyWorktreePolicy(lastSettings, (rules) => rules.worktreeOnDelete)
           ? worker.enqueue(undefined)
           : Effect.void,

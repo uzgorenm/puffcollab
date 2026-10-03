@@ -4,6 +4,7 @@ import {
 } from "@t3tools/shared/sourceControl";
 import {
   CommandId,
+  isRemoteHubThread,
   type OrchestrationEvent,
   type OrchestrationProjectShell,
   type OrchestrationShellSnapshot,
@@ -78,6 +79,12 @@ export function pullRequestMatchesProject(
  * sweep over all threads reads only unsettled threads, since both sweeps skip
  * settled ones. Discovery's backfill does its own full read.
  */
+/** Team hub mirrors belong to a teammate's server; local sweeps never touch them. */
+const withoutHubMirrors = <S extends OrchestrationShellSnapshot>(snapshot: S): S => ({
+  ...snapshot,
+  threads: snapshot.threads.filter((thread) => !isRemoteHubThread(thread)),
+});
+
 export const readSweepSnapshot = (
   snapshots: ProjectionSnapshotQuery.ProjectionSnapshotQueryShape,
   threadId: ThreadId | null,
@@ -86,13 +93,15 @@ export const readSweepSnapshot = (
   ProjectionRepositoryError
 > =>
   threadId === null
-    ? snapshots.getShellSnapshot({ unsettledOnly: true })
+    ? snapshots.getShellSnapshot({ unsettledOnly: true }).pipe(Effect.map(withoutHubMirrors))
     : Effect.gen(function* () {
         // Read the sequence first. The thread is then at least this new, so a
         // command guarded by the sequence is rejected rather than missing a change.
         const { snapshotSequence } = yield* snapshots.getSnapshotSequence();
         const thread = yield* snapshots.getThreadShellById(threadId);
-        if (Option.isNone(thread)) return { snapshotSequence, projects: [], threads: [] };
+        if (Option.isNone(thread) || isRemoteHubThread(thread.value)) {
+          return { snapshotSequence, projects: [], threads: [] };
+        }
         // Settlement also checks the project a saved pull request names.
         const reference = thread.value.linkedPullRequest ?? thread.value.branchPullRequest;
         const projects = yield* snapshots.getProjectShells(
@@ -134,7 +143,7 @@ export const make = Effect.gen(function* () {
     // Backfill looks up settled threads, so its passes read every thread.
     const snapshot =
       request.threadId === null && (request.backfill || pendingBackfill.size > 0)
-        ? yield* snapshots.getShellSnapshot()
+        ? withoutHubMirrors(yield* snapshots.getShellSnapshot())
         : yield* readSweepSnapshot(snapshots, request.threadId);
     const projects = new Map(snapshot.projects.map((project) => [project.id, project]));
     if (request.backfill) {
@@ -367,6 +376,7 @@ export const make = Effect.gen(function* () {
   );
 
   const processEvent = (event: OrchestrationEvent) => {
+    if (event.metadata.hubOrigin !== undefined) return Effect.void;
     switch (event.type) {
       case "thread.created":
       case "thread.unarchived":

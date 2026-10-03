@@ -96,9 +96,11 @@ const make = Effect.gen(function* () {
           Stream.onStart(orchestrationEngine.latestSequence.pipe(Effect.flatMap(noteSeen))),
         ),
         (event) =>
-          (event.type === "thread.deleted" ? worker.enqueue(event) : Effect.void).pipe(
-            Effect.andThen(noteSeen(event.sequence)),
-          ),
+          // A removed team hub mirror owns no sessions, terminals or worktrees.
+          (event.type === "thread.deleted" && event.metadata.hubOrigin === undefined
+            ? worker.enqueue(event)
+            : Effect.void
+          ).pipe(Effect.andThen(noteSeen(event.sequence))),
       ),
     );
   });

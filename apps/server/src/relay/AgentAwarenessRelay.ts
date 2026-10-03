@@ -5,6 +5,7 @@ import type {
   OrchestrationThreadShell,
   ThreadId,
 } from "@t3tools/contracts";
+import { isRemoteHubThread } from "@t3tools/contracts";
 import {
   RelayApi,
   type RelayAgentActivityPublishProofPayload,
@@ -569,7 +570,8 @@ export const make = Effect.gen(function* () {
       environmentId,
       startedAt,
       projects: snapshot.projects,
-      threads: snapshot.threads,
+      // Team hub mirrors are a teammate's agents, not this environment's.
+      threads: snapshot.threads.filter((thread) => !isRemoteHubThread(thread)),
     });
     if (activeThreadIds.length === 0) {
       yield* Effect.logDebug("agent activity snapshot has no publishable threads");
@@ -660,6 +662,7 @@ export const make = Effect.gen(function* () {
       );
       yield* forkParked(
         Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
+          if (event.metadata.hubOrigin !== undefined) return Effect.void;
           const threadId = eventThreadId(event);
           if (threadId === null) {
             return Effect.logDebug("agent activity publishing ignored event without thread id", {

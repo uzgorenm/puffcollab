@@ -73,6 +73,8 @@ import Migration0070 from "./Migrations/070_Cooperation.ts";
 import Migration0075 from "./Migrations/075_ProjectionThreadRelatedLinks.ts";
 import Migration0080 from "./Migrations/080_ProjectionThreadsWorktreePathIndex.ts";
 import Migration0085 from "./Migrations/085_ProjectInvitations.ts";
+import Migration0090 from "./Migrations/090_HubSync.ts";
+import Migration0091 from "./Migrations/091_ProjectionHubLinks.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -146,6 +148,8 @@ const migrationEntries = [
   [75, "ProjectionThreadRelatedLinks", Migration0075],
   [80, "ProjectionThreadsWorktreePathIndex", Migration0080],
   [85, "ProjectInvitations", Migration0085],
+  [90, "HubSync", Migration0090],
+  [91, "ProjectionHubLinks", Migration0091],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

@@ -12,6 +12,10 @@
  * unarchive, or delete any thread (housekeeping), but never send the agent
  * instructions. Comments are open to everyone who can see the thread.
  *
+ * Teammates' threads mirrored from the team hub (`isRemoteHubThread`) are
+ * read-only here: nobody on this server controls them, not even admins, and
+ * only comments are accepted (they travel to the hub, never to an agent).
+ *
  * Every client-dispatched orchestration command goes through
  * `authorizeCommand` before it reaches the engine (WebSocket and HTTP), so
  * transports and future controls share one rule.
@@ -19,6 +23,8 @@
  * @module ThreadAccess
  */
 import {
+  HubThreadLink,
+  isRemoteHubThread,
   isThreadShared,
   type MemberId,
   type OrchestrationCommand,
@@ -30,6 +36,7 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -86,7 +93,8 @@ export type ThreadAccessDeniedReason =
   | "thread-not-visible"
   | "not-project-member"
   | "not-comment-author"
-  | "admin-only";
+  | "admin-only"
+  | "remote-hub-thread";
 
 export class ThreadAccessDeniedError extends Schema.TaggedError<ThreadAccessDeniedError>()(
   "ThreadAccessDeniedError",
@@ -98,6 +106,7 @@ export class ThreadAccessDeniedError extends Schema.TaggedError<ThreadAccessDeni
       "not-project-member",
       "not-comment-author",
       "admin-only",
+      "remote-hub-thread",
     ]),
   },
 ) {
@@ -113,6 +122,8 @@ export class ThreadAccessDeniedError extends Schema.TaggedError<ThreadAccessDeni
         return "You can only delete your own comments.";
       case "admin-only":
         return "Only an admin can do that.";
+      case "remote-hub-thread":
+        return "This is a teammate's thread from the team hub. You can follow and comment on it.";
     }
   }
 }
@@ -155,16 +166,25 @@ interface ThreadRow {
   readonly projectId: string;
   readonly createdBy: string | null;
   readonly visibility: string | null;
+  readonly hubLink?: string | null;
 }
 
-const toFacts = (row: ThreadRow): ThreadVisibilityFacts & { readonly threadId: ThreadId } => ({
-  threadId: ThreadId.make(row.threadId),
-  projectId: ProjectId.make(row.projectId),
-  createdBy: row.createdBy as MemberId | null,
-  ...(row.visibility === "shared" || row.visibility === "private"
-    ? { visibility: row.visibility }
-    : {}),
-});
+const decodeHubLink = Schema.decodeUnknownOption(Schema.fromJsonString(HubThreadLink));
+
+const toFacts = (
+  row: ThreadRow,
+): ThreadVisibilityFacts & { readonly threadId: ThreadId; readonly hub?: HubThreadLink } => {
+  const hub = row.hubLink == null ? undefined : Option.getOrUndefined(decodeHubLink(row.hubLink));
+  return {
+    threadId: ThreadId.make(row.threadId),
+    projectId: ProjectId.make(row.projectId),
+    createdBy: row.createdBy as MemberId | null,
+    ...(row.visibility === "shared" || row.visibility === "private"
+      ? { visibility: row.visibility }
+      : {}),
+    ...(hub !== undefined ? { hub } : {}),
+  };
+};
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -185,7 +205,8 @@ const make = Effect.gen(function* () {
         thread_id AS "threadId",
         project_id AS "projectId",
         created_by AS "createdBy",
-        visibility
+        visibility,
+        hub_link_json AS "hubLink"
       FROM projection_threads
       WHERE thread_id = ${threadId}
     `.pipe(
@@ -203,6 +224,7 @@ const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const thread = yield* findThread(threadId);
+      if (thread !== undefined && isRemoteHubThread(thread)) return false;
       if (thread === undefined || threadOwnerOf(thread) === memberId) return true;
       if (commandType === undefined || !ADMIN_THREAD_COMMANDS.has(commandType)) return false;
       return yield* teamAccess.isAdmin(memberId);
@@ -262,6 +284,16 @@ const make = Effect.gen(function* () {
 
   const authorizeCommand: ThreadAccess["Service"]["authorizeCommand"] = (memberId, command) =>
     Effect.gen(function* () {
+      if ("threadId" in command && command.type !== "thread.create") {
+        const thread = yield* findThread(command.threadId);
+        if (thread !== undefined && isRemoteHubThread(thread)) {
+          yield* requireVisible(memberId, command.threadId, command);
+          if (command.type === "thread.comment.add") return;
+          if (command.type !== "thread.comment.delete") {
+            return yield* deny(command, "remote-hub-thread");
+          }
+        }
+      }
       switch (command.type) {
         case "project.create":
           // The creator joins the project; see ProjectionPipeline.
@@ -298,6 +330,8 @@ const make = Effect.gen(function* () {
           `.pipe(persistence("ThreadAccess.commentAuthor"));
           const authorId = authors[0]?.authorId;
           if (authorId === undefined || authorId === memberId) return;
+          // A teammate's hub comment: only its author can delete it, on the hub.
+          if (authorId.startsWith("hub:")) return yield* deny(command, "not-comment-author");
           return (yield* teamAccess.isAdmin(memberId))
             ? undefined
             : yield* deny(command, "not-comment-author");

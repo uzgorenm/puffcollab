@@ -3,6 +3,7 @@ import {
   ApprovalRequestId,
   ChatAttachment,
   OrchestrationMessageContext,
+  HubThreadLink,
   CheckpointRef,
   IsoDateTime,
   MemberId,
@@ -139,6 +140,7 @@ const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
     titleState: Schema.NullOr(Schema.fromJsonString(ThreadTitleState)),
     linkedPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
     branchPullRequest: Schema.NullOr(Schema.fromJsonString(ThreadLinkedPullRequest)),
+    hubLink: Schema.optional(Schema.NullOr(Schema.fromJsonString(HubThreadLink))),
   }),
 );
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
@@ -598,6 +600,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           auto_settle_disabled_at AS "autoSettleDisabledAt",
           created_by AS "createdBy",
           visibility,
+          hub_link_json AS "hubLink",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -648,6 +651,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           auto_settle_disabled_at AS "autoSettleDisabledAt",
           created_by AS "createdBy",
           visibility,
+          hub_link_json AS "hubLink",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -725,6 +729,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           auto_settle_disabled_at AS "autoSettleDisabledAt",
           created_by AS "createdBy",
           visibility,
+          hub_link_json AS "hubLink",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -1332,6 +1337,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           auto_settle_disabled_at AS "autoSettleDisabledAt",
           created_by AS "createdBy",
           visibility,
+          hub_link_json AS "hubLink",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -1493,7 +1499,8 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           thread_id AS "threadId",
           author_id AS "authorId",
           text,
-          created_at AS "createdAt"
+          created_at AS "createdAt",
+          hub_author_json AS "hubAuthor"
         FROM projection_thread_comments
         WHERE thread_id = ${threadId}
         ORDER BY created_at ASC, comment_id ASC
@@ -2432,6 +2439,7 @@ pending_approval_requests AS (
                 autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
                 ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
                 ...(row.visibility != null ? { visibility: row.visibility } : {}),
+                ...(row.hubLink != null ? { hub: row.hubLink } : {}),
                 titleRegeneration: mapTitleRegeneration(row),
                 titleState: row.titleState,
                 deletedAt: row.deletedAt,
@@ -2680,6 +2688,7 @@ pending_approval_requests AS (
                   autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
                   ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
                   ...(row.visibility != null ? { visibility: row.visibility } : {}),
+                  ...(row.hubLink != null ? { hub: row.hubLink } : {}),
                   titleRegeneration: mapTitleRegeneration(row),
                   titleState: row.titleState,
                   deletedAt: row.deletedAt,
@@ -2843,6 +2852,7 @@ pending_approval_requests AS (
                         autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
                         ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
                         ...(row.visibility != null ? { visibility: row.visibility } : {}),
+                        ...(row.hubLink != null ? { hub: row.hubLink } : {}),
                         titleRegeneration: mapTitleRegeneration(row),
                         titleState: row.titleState,
                         session: sessionByThread.get(row.threadId) ?? null,
@@ -3031,6 +3041,7 @@ pending_approval_requests AS (
                   autoSettleDisabledAt: row.autoSettleDisabledAt ?? null,
                   ...(row.createdBy != null ? { createdBy: row.createdBy } : {}),
                   ...(row.visibility != null ? { visibility: row.visibility } : {}),
+                  ...(row.hubLink != null ? { hub: row.hubLink } : {}),
                   titleRegeneration: mapTitleRegeneration(row),
                   titleState: row.titleState,
                   session: sessionByThread.get(row.threadId) ?? null,
@@ -3382,6 +3393,7 @@ pending_approval_requests AS (
         autoSettleDisabledAt: threadRow.value.autoSettleDisabledAt ?? null,
         ...(threadRow.value.createdBy != null ? { createdBy: threadRow.value.createdBy } : {}),
         ...(threadRow.value.visibility != null ? { visibility: threadRow.value.visibility } : {}),
+        ...(threadRow.value.hubLink != null ? { hub: threadRow.value.hubLink } : {}),
         titleRegeneration: mapTitleRegeneration(threadRow.value),
         titleState: threadRow.value.titleState,
         session: Option.isSome(sessionRow) ? mapSessionRow(sessionRow.value) : null,
@@ -3699,6 +3711,7 @@ pending_approval_requests AS (
         autoSettleDisabledAt: threadRow.value.autoSettleDisabledAt ?? null,
         ...(threadRow.value.createdBy != null ? { createdBy: threadRow.value.createdBy } : {}),
         ...(threadRow.value.visibility != null ? { visibility: threadRow.value.visibility } : {}),
+        ...(threadRow.value.hubLink != null ? { hub: threadRow.value.hubLink } : {}),
         ...(commentRows.length > 0
           ? { comments: commentRows.map(toOrchestrationThreadComment) }
           : {}),

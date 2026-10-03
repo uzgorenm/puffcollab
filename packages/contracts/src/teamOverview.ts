@@ -202,6 +202,33 @@ export const TeamWorkCardStatus = Schema.Literals([
 ]);
 export type TeamWorkCardStatus = typeof TeamWorkCardStatus.Type;
 
+/**
+ * Work-card status from a thread shell, for servers that publish it (the team
+ * hub summary). Same rule as client-runtime's `deriveTeamWorkCardStatus`.
+ */
+export const teamWorkCardStatusOf = (thread: {
+  readonly hasPendingApprovals: boolean;
+  readonly hasPendingUserInput: boolean;
+  readonly session: { readonly status: string } | null;
+  readonly latestTurn: { readonly state: string } | null;
+  readonly backgroundLiveness?: "working" | "monitoring" | null | undefined;
+  readonly settledAt: string | null;
+}): TeamWorkCardStatus => {
+  if (thread.hasPendingApprovals) return "waiting-approval";
+  if (thread.hasPendingUserInput) return "waiting-input";
+  if (thread.session?.status === "running" || thread.session?.status === "starting") {
+    return "working";
+  }
+  if (thread.session?.status === "error" || thread.latestTurn?.state === "error") {
+    return "errored";
+  }
+  if (thread.backgroundLiveness === "working" || thread.backgroundLiveness === "monitoring") {
+    return "working";
+  }
+  if (thread.settledAt != null) return "settled";
+  return "idle";
+};
+
 /** An agent-written summary of the work. Filled by the analysis feature. */
 export const TeamWorkCardAnalysis = Schema.Struct({
   summary: Schema.String,
