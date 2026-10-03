@@ -199,6 +199,29 @@ devices. For server version warnings, follow [Updating T3 Code](./updating.md).
 
 Several people can share one environment, each signing in as themselves.
 
+### Team hub
+
+With a team hub, each teammate runs Puff Collab on their own computer, with
+their own agents and provider sign-ins, and the hub syncs shared threads
+between them. Private threads never leave your computer.
+
+1. **Link your computer.** In **Settings → Connections → Team hub** (on mobile,
+   **Settings → Team hub**), enter your team's hub address and choose **Link
+   this computer**. The hub opens in your browser; sign in with GitHub and enter
+   the code shown in Puff Collab. Only the environment's admin can do this.
+2. **Link a project.** Choose **Link to team hub** from the thread menu, project
+   settings, or the command palette (on mobile, a thread's **Team** screen). If
+   a teammate already has the same repository on the hub, choose **Join** to
+   use their hub project instead. **Unlink** stops syncing that project.
+3. **Invite by GitHub login.** **Invite people** in a linked project asks for
+   a GitHub login and lists pending invitations you can cancel. Invitations
+   appear in the sidebar (on mobile, on Home) with **Accept** and **Decline**.
+
+Shared threads in a linked project sync to the hub; a small cloud icon shows
+whether yours are synced, waiting, or offline. Teammates' shared threads appear
+under the project with their owner's name: you follow and comment, and only
+their owner's computer runs the agent.
+
 ### Members
 
 An admin opens **Settings → Connections → Team members**, adds a member, and
