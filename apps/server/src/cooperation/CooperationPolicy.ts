@@ -5,6 +5,9 @@
  *
  * @module CooperationPolicy
  */
+// @effect-diagnostics nodeBuiltinImport:off -- Redaction masks the home directory, which only the Node os module can resolve.
+import * as NodeOS from "node:os";
+
 import {
   COOPERATION_NOTE_MAX_CHARS,
   COOPERATION_SUMMARY_MAX_CHARS,
@@ -14,8 +17,8 @@ import {
   type RelatedThreadRelationship,
   type ThreadId,
 } from "@t3tools/contracts";
+import { redactSecretText } from "@t3tools/shared/hubRedaction";
 
-import { sanitizeAcpStderrExcerpt } from "../provider/acp/AcpStderr.ts";
 import type {
   CooperationAnalystEvent,
   CooperationAnalystOutput,
@@ -51,35 +54,15 @@ export const EXPORTABLE_EVENT_TYPES = [
   "thread.turn-diff-completed",
 ] as const satisfies ReadonlyArray<OrchestrationEvent["type"]>;
 
-const EXTRA_SECRET_PATTERNS: ReadonlyArray<RegExp> = [
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
-  /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,
-  /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{16,}\b/g,
-  /\bAIza[A-Za-z0-9_-]{30,}\b/g,
-  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
-  /\b(api[_-]?key|password|passwd|secret|(?:access[_-]?|refresh[_-]?)?token|authorization)(\s*[=:]\s*)\S+/gi,
-  /(https?:\/\/)[^\s/:@]+:[^\s/@]+@/g,
-];
-
 /**
- * Masks credentials and the home directory. Builds on the ACP stderr
- * sanitizer and adds key formats that show up in agent transcripts.
+ * Masks credentials and the home directory, with the rules hub sync uses.
  */
 export function redactSecrets(text: string): string {
-  let result = sanitizeAcpStderrExcerpt(text);
-  for (const pattern of EXTRA_SECRET_PATTERNS) {
-    result = result.replace(pattern, (_match, ...groups: Array<unknown>) => {
-      const [first, second] = groups;
-      if (typeof first === "string" && typeof second === "string") {
-        return `${first}${second}[redacted]`;
-      }
-      if (typeof first === "string" && first.startsWith("http")) return `${first}[redacted]@`;
-      return "[redacted]";
-    });
-  }
-  // Strip control characters other than tab and newlines.
-  // eslint-disable-next-line no-control-regex
-  return result.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+  return redactSecretText(text, {
+    homeDirs: [process.env.HOME, process.env.USERPROFILE, NodeOS.homedir()].filter(
+      (value): value is string => typeof value === "string" && value.length > 1,
+    ),
+  });
 }
 
 const SECRET_LIKE =
