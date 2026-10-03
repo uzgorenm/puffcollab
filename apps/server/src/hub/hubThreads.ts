@@ -23,13 +23,13 @@ import {
 /** Turns of history a thread publishes when it is first shared. */
 export const HUB_BOOTSTRAP_TURN_LIMIT = 20;
 /** Newest activities included in that bootstrap. */
-export const HUB_BOOTSTRAP_ACTIVITY_LIMIT = 200;
+const HUB_BOOTSTRAP_ACTIVITY_LIMIT = 200;
 
 /** The local id of a teammate's mirrored thread. Stable per hub thread. */
 export const mirrorThreadIdOf = (hubThreadId: HubThreadId): ThreadId =>
   ThreadId.make(`hub:${hubThreadId}`);
 
-export interface TimedBody {
+interface TimedBody {
   readonly occurredAt: string;
   readonly body: HubThreadEventBody;
 }

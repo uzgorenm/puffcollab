@@ -23,16 +23,16 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 
-export class HubTransportError extends Schema.TaggedError<HubTransportError>()(
-  "HubTransportError",
-  { operation: Schema.String, cause: Schema.Defect() },
-) {
+class HubTransportError extends Schema.TaggedError<HubTransportError>()("HubTransportError", {
+  operation: Schema.String,
+  cause: Schema.Defect(),
+}) {
   override get message(): string {
     return `Could not reach the team hub (${this.operation}).`;
   }
 }
 
-export interface HubHttpResponse {
+interface HubHttpResponse {
   readonly status: number;
   readonly body: unknown;
 }

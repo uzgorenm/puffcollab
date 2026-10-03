@@ -20,7 +20,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-export class HubSyncPersistenceError extends Schema.TaggedError<HubSyncPersistenceError>()(
+class HubSyncPersistenceError extends Schema.TaggedError<HubSyncPersistenceError>()(
   "HubSyncPersistenceError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {
@@ -33,13 +33,13 @@ const decodeAccount = Schema.decodeUnknownOption(Schema.fromJsonString(HubAccoun
 const decodeLink = Schema.decodeUnknownOption(Schema.fromJsonString(HubThreadLink));
 const decodeSummary = Schema.decodeUnknownOption(Schema.fromJsonString(HubThreadSummaryFields));
 
-export interface HubLinkRow {
+interface HubLinkRow {
   readonly hubUrl: string | null;
   readonly linkId: HubEnvironmentLinkId | null;
   readonly account: HubAccount | null;
 }
 
-export interface HubProjectLinkRow {
+interface HubProjectLinkRow {
   readonly projectId: ProjectId;
   readonly hubProjectId: HubProjectId;
   readonly hubProjectTitle: string;
@@ -78,7 +78,7 @@ export interface HubRemoteThreadRow {
   readonly seq: number;
 }
 
-export interface HubCommentOpRow {
+interface HubCommentOpRow {
   readonly commentId: string;
   readonly op: "add" | "delete";
   readonly hubThreadId: HubThreadId;
@@ -524,5 +524,3 @@ export const makeHubStore = Effect.gen(function* () {
     deleteCommentOp,
   };
 });
-
-export type HubStore = Effect.Success<typeof makeHubStore>;
