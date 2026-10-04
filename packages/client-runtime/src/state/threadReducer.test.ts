@@ -5,6 +5,7 @@ import {
   CommandId,
   ComposerContextId,
   EventId,
+  HubAccountId,
   MemberId,
   MessageId,
   ProjectId,
@@ -1770,5 +1771,24 @@ describe("shared threads", () => {
       },
     });
     expect(removed.kind === "updated" && removed.thread.comments).toEqual([]);
+  });
+
+  it("preserves a hub comment's author in live updates", () => {
+    const hubAuthor = {
+      accountId: HubAccountId.make("bob-account"),
+      githubLogin: "bob" as const,
+      displayName: "Bob",
+    };
+    const added = applyThreadDetailEvent(baseThread, {
+      ...commentAdded,
+      metadata: { hubOrigin: {} },
+      payload: { ...commentAdded.payload, hubAuthor },
+    });
+    if (added.kind !== "updated") throw new Error("expected update");
+    expect(added.thread.comments?.[0]).toMatchObject({
+      authorId: "hub:bob-account",
+      hubAuthor,
+    });
+    expect(added.thread.messages).toEqual(baseThread.messages);
   });
 });

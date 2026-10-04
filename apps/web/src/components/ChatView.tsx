@@ -2008,7 +2008,7 @@ export default function ChatView(props: ChatViewProps) {
   // Puff Collab: only the owner drives a thread; teammates follow and comment.
   const threadCollaboration = useThreadCollaboration(
     activeThreadEnvironmentId ?? null,
-    activeThreadShell,
+    activeThreadShell ?? activeThread,
   );
   const followingThreadRef =
     isServerThread && activeThreadRef !== null && !threadCollaboration.isOwner
@@ -2900,6 +2900,7 @@ export default function ChatView(props: ChatViewProps) {
       (status) => status.instanceId === activeThread?.session?.providerInstanceId,
     ) ?? activeProviderStatus;
   const supportsConversationRollback =
+    threadCollaboration.isOwner &&
     conversationProviderStatus !== null &&
     conversationProviderStatus.supportsConversationRollback !== false;
   const phase = derivePhase(activeThread?.session ?? null);
@@ -9588,12 +9589,18 @@ export default function ChatView(props: ChatViewProps) {
       />
     ) : renderedRightPanelSurface?.kind === "diff" ? (
       <Suspense fallback={null}>
-        <DiffPanel
-          key={activeThreadKey}
-          mode="embedded"
-          composerDraftTarget={composerDraftTarget}
-          workspaceMutationId={workspaceMutationId}
-        />
+        {isServerThread && activeThreadShell === null ? (
+          <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
+            This thread is no longer available. Select another thread to inspect its diff.
+          </div>
+        ) : (
+          <DiffPanel
+            key={activeThreadKey}
+            mode="embedded"
+            composerDraftTarget={composerDraftTarget}
+            workspaceMutationId={workspaceMutationId}
+          />
+        )}
       </Suspense>
     ) : renderedRightPanelSurface?.kind === "pull-request" && !pullRequestsCapabilityKnown ? (
       <PullRequestDetailGhost />

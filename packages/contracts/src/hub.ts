@@ -402,6 +402,7 @@ export const HubProjectInvitation = Schema.Struct({
   projectId: HubProjectId,
   projectTitle: TrimmedNonEmptyString,
   inviterId: HubAccountId,
+  inviterLogin: Schema.optional(GithubLogin),
   inviteeLogin: GithubLogin,
   inviteeId: Schema.NullOr(HubAccountId),
   state: HubInvitationState,

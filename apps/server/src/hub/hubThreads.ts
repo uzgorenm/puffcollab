@@ -232,7 +232,8 @@ export const toLocalInvitation = (
   invitationId: invitation.invitationId,
   hubProjectId: invitation.projectId,
   projectTitle: invitation.projectTitle,
-  inviterLogin: accountOrPlaceholder(accounts, invitation.inviterId).githubLogin,
+  inviterLogin:
+    invitation.inviterLogin ?? accountOrPlaceholder(accounts, invitation.inviterId).githubLogin,
   inviteeLogin: invitation.inviteeLogin,
   direction,
   state: invitation.state,

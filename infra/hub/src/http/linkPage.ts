@@ -91,6 +91,18 @@ async function decide(decision) {
 form.addEventListener("submit", (event) => { event.preventDefault(); lookup(); });
 document.getElementById("approve").addEventListener("click", () => decide("approve"));
 document.getElementById("deny").addEventListener("click", () => decide("deny"));
+document.getElementById("sign-out").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const response = await fetch("/v1/auth/sign-out", { method: "POST", credentials: "same-origin" });
+    if (!response.ok) throw new Error("Sign-out failed");
+    window.location.reload();
+  } catch {
+    say("Could not sign out. Try again.");
+    button.disabled = false;
+  }
+});
 if (code.value) lookup();
 `;
 
@@ -130,6 +142,7 @@ ${github}${dev}`,
       nonce,
       `<h1>Link Puff Collab to this hub</h1>
 <p class="muted">Signed in as ${escapeHtml(input.account.displayName)} (@${escapeHtml(input.account.githubLogin)}).</p>
+<p><button id="sign-out" type="button">Sign out</button></p>
 <form id="lookup" novalidate>
   <label for="code">Code shown in Puff Collab</label>
   <input id="code" name="code" value="${code}" autocomplete="one-time-code" inputmode="text" maxlength="9" aria-describedby="code-help" required>

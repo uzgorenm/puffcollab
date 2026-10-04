@@ -610,6 +610,7 @@ interface InvitationRow {
   readonly project_id: string;
   readonly project_title: string;
   readonly inviter_id: string;
+  readonly inviter_login: string;
   readonly invitee_login: string;
   readonly invitee_id: string | null;
   readonly state: string;
@@ -623,6 +624,7 @@ const invitationOf = (row: InvitationRow): HubProjectInvitation => ({
   projectId: row.project_id as HubProjectId,
   projectTitle: row.project_title,
   inviterId: row.inviter_id as HubAccountId,
+  inviterLogin: row.inviter_login as GithubLogin,
   inviteeLogin: row.invitee_login as GithubLogin,
   inviteeId: row.invitee_id as HubAccountId | null,
   state: row.state as HubInvitationState,
@@ -631,9 +633,10 @@ const invitationOf = (row: InvitationRow): HubProjectInvitation => ({
   resolvedAt: row.resolved_at,
 });
 
-const INVITATION_SELECT = `SELECT i.invitation_id, i.project_id, p.title AS project_title, i.inviter_id,
+const INVITATION_SELECT = `SELECT i.invitation_id, i.project_id, p.title AS project_title, i.inviter_id, a.github_login AS inviter_login,
   i.invitee_login, i.invitee_id, i.state, i.created_at, i.expires_at, i.resolved_at
-  FROM invitations i JOIN projects p ON p.project_id = i.project_id`;
+  FROM invitations i JOIN projects p ON p.project_id = i.project_id
+  JOIN accounts a ON a.account_id = i.inviter_id`;
 
 /** Marks overdue pending invitations expired. Cheap; called before invitation reads. */
 export const expireInvitations = async (db: D1Database, nowMs: number): Promise<void> => {

@@ -15,6 +15,7 @@ import type {
 } from "@t3tools/contracts";
 import { threadPullRequestKeysEqual } from "@t3tools/shared/threadPullRequests";
 import {
+  hubCommentAuthorId,
   isImportedAgentSessionMessageId,
   OWNER_MEMBER_ID,
   removeRelatedThreadLink,
@@ -792,7 +793,10 @@ export function applyThreadDetailEvent(
             ...comments,
             {
               id: event.payload.commentId,
-              authorId: event.metadata.actor ?? OWNER_MEMBER_ID,
+              authorId: event.payload.hubAuthor
+                ? hubCommentAuthorId(event.payload.hubAuthor.accountId)
+                : (event.metadata.actor ?? OWNER_MEMBER_ID),
+              ...(event.payload.hubAuthor ? { hubAuthor: event.payload.hubAuthor } : {}),
               text: event.payload.text,
               createdAt: event.payload.createdAt,
             },

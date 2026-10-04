@@ -77,14 +77,29 @@ Workers or databases in the account.
 1. `npx wrangler login` (or set `CLOUDFLARE_API_TOKEN`).
 2. `npx wrangler d1 create puffcollab-hub`, then copy the printed `database_id` into
    `wrangler.jsonc` (replacing the zero placeholder).
-3. Set `HUB_PUBLIC_URL` in `wrangler.jsonc` `vars` to the Worker's URL,
-   `https://puffcollab-hub.<subdomain>.workers.dev`.
+3. Use the Worker's URL, `https://puffcollab-hub.<subdomain>.workers.dev`, as
+   `HUB_PUBLIC_URL` when deploying. Keep the committed localhost default for local development.
 4. Create a GitHub OAuth app with callback URL `<HUB_PUBLIC_URL>/v1/auth/github/callback`.
 5. `npx wrangler secret put GITHUB_CLIENT_ID` and `npx wrangler secret put GITHUB_CLIENT_SECRET`.
 6. `npx wrangler d1 migrations apply puffcollab-hub --remote`.
-7. `npx wrangler deploy`. Durable Object classes are created by the `migrations` block in
+7. `npx wrangler deploy --var HUB_PUBLIC_URL:https://puffcollab-hub.<subdomain>.workers.dev`.
+   Durable Object classes are created by the `migrations` block in
    `wrangler.jsonc`.
 8. Check `curl <HUB_PUBLIC_URL>/v1/health`.
+
+## Rollback and secret rotation
+
+Run `npx wrangler deployments list` to identify the previous working version, then
+`npx wrangler rollback <version-id>`. Check `/v1/health` and complete a computer-link
+flow afterwards. A Worker rollback does not undo D1 migrations or Durable Object data
+changes; confirm that the earlier code can read the current data before rolling back.
+
+The operator enters OAuth secrets directly with `npx wrangler secret put GITHUB_CLIENT_ID`
+and `npx wrangler secret put GITHUB_CLIENT_SECRET`; never put them in issue comments,
+commands, or committed files. When rotating the GitHub app's client secret, add the new
+secret in GitHub, update the Worker secret, verify a new GitHub sign-in, then revoke the
+old secret in GitHub. In-flight sign-ins may need to restart because the client secret
+also signs OAuth state. `npx wrangler secret list` lists names without revealing values.
 
 ## Self-hosting on a LAN
 

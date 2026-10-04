@@ -9580,6 +9580,67 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     );
   }
 
+  it.effect("delivers related-thread links and unlinks to an open thread", () =>
+    Effect.gen(function* () {
+      const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
+      const thread = makeDefaultOrchestrationReadModel().threads[0]!;
+      const relatedThreadId = ThreadId.make("related-thread");
+      const base = {
+        eventId: EventId.make("related-link-event"),
+        aggregateKind: "thread" as const,
+        aggregateId: defaultThreadId,
+        occurredAt: "2026-01-01T00:00:01.000Z",
+        commandId: null,
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+      };
+      const linked: OrchestrationEvent = {
+        ...base,
+        sequence: 2,
+        type: "thread.related-thread-linked",
+        payload: {
+          threadId: defaultThreadId,
+          link: { relatedThreadId, relationship: "complementary", linkedAt: base.occurredAt },
+        },
+      };
+      const unlinked: OrchestrationEvent = {
+        ...base,
+        eventId: EventId.make("related-unlink-event"),
+        sequence: 3,
+        type: "thread.related-thread-unlinked",
+        payload: { threadId: defaultThreadId, relatedThreadId },
+      };
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: { streamDomainEvents: Stream.fromPubSub(liveEvents) },
+          projectionSnapshotQuery: {
+            getThreadDetailSnapshot: () =>
+              Effect.gen(function* () {
+                yield* PubSub.publishAll(liveEvents, [linked, unlinked]);
+                return Option.some({ snapshotSequence: 1, thread });
+              }),
+          },
+        },
+      });
+      const items = yield* Effect.scoped(
+        withWsRpcClient(yield* getWsServerUrl("/ws"), (client) =>
+          client[ORCHESTRATION_WS_METHODS.subscribeThread]({
+            threadId: defaultThreadId,
+            requestCompletionMarker: true,
+          }).pipe(
+            Stream.takeUntil((item) => item.kind === "synchronized"),
+            Stream.runCollect,
+          ),
+        ),
+      );
+      assert.deepEqual(
+        items.filter((item) => item.kind === "event").map((item) => item.event),
+        [linked, unlinked],
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("marks a socket thread snapshot as synchronized when requested", () =>
     Effect.gen(function* () {
       const thread = makeDefaultOrchestrationReadModel().threads[0]!;

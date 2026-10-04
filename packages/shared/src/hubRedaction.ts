@@ -38,6 +38,8 @@ export interface RedactSecretTextOptions {
   readonly homeDirs?: ReadonlyArray<string>;
   /** Workspace roots to rewrite as `.`, applied before home directories. */
   readonly workspaceRoots?: ReadonlyArray<string>;
+  /** Preserve boundaries in streaming message chunks and patches. */
+  readonly preserveWhitespace?: boolean;
 }
 
 const replaceAllOf = (text: string, values: ReadonlyArray<string>, replacement: string) => {
@@ -65,8 +67,8 @@ export function redactSecretText(text: string, options: RedactSecretTextOptions 
     .replace(BEARER_TOKEN_PATTERN, "Bearer [redacted]")
     .replace(BASIC_AUTH_PATTERN, "Authorization: Basic [redacted]")
     .replace(API_KEY_HEADER_PATTERN, "x-api-key: [redacted]")
-    .replace(SECRET_TOKEN_PATTERN, "[redacted]")
-    .trim();
+    .replace(SECRET_TOKEN_PATTERN, "[redacted]");
+  if (!options.preserveWhitespace) result = result.trim();
   for (const pattern of KEY_FORMAT_PATTERNS) {
     result = result.replace(pattern, (_match, ...groups: Array<unknown>) => {
       const [first, second] = groups;
@@ -108,7 +110,10 @@ interface Pass {
 }
 
 const text = (pass: Pass, value: string, maxBytes: number): string => {
-  const cut = truncateUtf8(redactSecretText(value, pass.context), maxBytes);
+  const cut = truncateUtf8(
+    redactSecretText(value, { ...pass.context, preserveWhitespace: true }),
+    maxBytes,
+  );
   if (cut.truncated) pass.truncated = true;
   return cut.text;
 };

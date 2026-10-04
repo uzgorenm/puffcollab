@@ -73,6 +73,15 @@ const activity = (payload: unknown): HubThreadEventBody =>
     },
   });
 
+it("keeps whitespace at streaming message boundaries while redacting secrets", () => {
+  const result = redactForHub(message(`\n\n  ${SECRETS[0]} \n`), context);
+  if (result?.body.type !== "thread.message-sent") throw new Error("expected a message");
+  expect(result.body.payload.text).toBe("\n\n  [redacted] \n");
+  const whitespace = redactForHub(message("\n\n"), context);
+  if (whitespace?.body.type !== "thread.message-sent") throw new Error("expected a message");
+  expect(whitespace.body.payload.text).toBe("\n\n");
+});
+
 describe("redactSecretText", () => {
   it("masks sample secrets, paths and pairing links", () => {
     const input = [

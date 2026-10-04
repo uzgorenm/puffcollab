@@ -370,7 +370,9 @@ export function isThreadDetailEvent(event: OrchestrationEvent): event is Extract
       | "thread.reverted"
       | "thread.session-set"
       | "thread.comment-added"
-      | "thread.comment-deleted";
+      | "thread.comment-deleted"
+      | "thread.related-thread-linked"
+      | "thread.related-thread-unlinked";
   }
 > {
   return (
@@ -381,7 +383,9 @@ export function isThreadDetailEvent(event: OrchestrationEvent): event is Extract
     event.type === "thread.reverted" ||
     event.type === "thread.session-set" ||
     event.type === "thread.comment-added" ||
-    event.type === "thread.comment-deleted"
+    event.type === "thread.comment-deleted" ||
+    event.type === "thread.related-thread-linked" ||
+    event.type === "thread.related-thread-unlinked"
   );
 }
 

@@ -60,7 +60,11 @@ describe("GitHub sign-in", () => {
     });
     expect(invited.type).toBe("ack");
     const pending = await owner.client.nextOfType("team.invitations");
-    expect(pending.invitations[0]).toMatchObject({ inviteeLogin: "New-Comer", inviteeId: null });
+    expect(pending.invitations[0]).toMatchObject({
+      inviteeLogin: "New-Comer",
+      inviteeId: null,
+      inviterLogin: "octo-owner",
+    });
 
     hub.users.set("new-comer", { id: 4242, login: "new-comer", name: "New Comer" });
     const start = await hub.fetch("/v1/auth/github/start?returnTo=%2Flink%3Fcode%3DABCD-EFGH", {
