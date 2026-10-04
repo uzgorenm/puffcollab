@@ -22,7 +22,7 @@
       "binding": "DB",
       "database_name": "puffcollab-hub",
       // Placeholder: replace with the id printed by `wrangler d1 create puffcollab-hub`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "57db46ab-fdb4-4cf2-8c01-4cbb05422600",
       "migrations_dir": "migrations",
     },
   ],
