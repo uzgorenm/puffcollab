@@ -15,6 +15,8 @@ const escapeHtml = (value: string): string =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
+const PUFFIN = `<svg aria-hidden="true" width="48" height="48" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><path fill="#193c49" d="M38 103C27 89 27 65 38 52C36 27 50 15 68 15C89 15 98 34 94 54C104 71 102 92 88 105Z"/><path fill="#fff8ee" d="M48 51C42 40 49 25 65 25C79 25 88 36 86 49C84 61 74 67 62 63C79 69 85 85 79 101H45C36 86 39 64 48 51Z"/><path fill="#ff9438" d="M83 37L113 51L84 62Z"/><path fill="#e65e40" d="M97 44L113 51L97 57Z"/><path fill="#193c49" d="M76 40A4 4 0 1 0 68 40A4 4 0 1 0 76 40Z"/><path fill="#ff9438" d="M42 103H58L64 112H35ZM74 103H88L96 112H70Z"/></svg>`;
+
 const STYLE = `
 :root { color-scheme: light dark; --bg: #fafafa; --fg: #1a1a1a; --muted: #5c5c5c; --line: #d4d4d4; --accent: #1f6feb; --danger: #b42318; }
 @media (prefers-color-scheme: dark) { :root { --bg: #141414; --fg: #ededed; --muted: #a3a3a3; --line: #3a3a3a; --accent: #58a6ff; --danger: #ff7b72; } }
@@ -43,7 +45,7 @@ const page = (nonce: string, body: string, script = "") => `<!doctype html>
 <title>Link Puff Collab</title>
 <style nonce="${nonce}">${STYLE}</style>
 </head>
-<body><main>${body}</main>${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body>
+<body><main>${PUFFIN}${body}</main>${script ? `<script nonce="${nonce}">${script}</script>` : ""}</body>
 </html>`;
 
 const SCRIPT = `

@@ -1,8 +1,10 @@
-# T3 Code docs
+# Puff Collab docs
 
-## Using T3 Code
+Start with the [Puff Collab setup and collaboration guide](../README.md). The detailed guides below also cover inherited upstream features, including T3 Connect and mobile builds; those services and upstream store releases are separate from the Puff Collab team hub.
 
-- [Install T3 Code](./user/install.md)
+## Using Puff Collab
+
+- [Install Puff Collab](./user/install.md)
 - [Messages and context](./user/composer.md)
 - [Working with threads](./user/thread-sidebar.md)
 - [Permission modes](./user/permission-modes.md)
@@ -19,12 +21,12 @@
 - [Remote access](./user/remote-access.md)
 - [Teams](./user/teams.md)
 - [Running in the background](./user/background-service.md)
-- [Updating T3 Code](./user/updating.md)
+- [Updating Puff Collab](./user/updating.md)
 - Provider guides: [Codex](./user/providers-codex.md) · [Claude](./user/providers-claude.md) · [OpenCode](./user/providers-opencode.md) · [Antigravity](./user/providers-antigravity.md)
 
 ---
 
-## Working on T3 Code
+## Working on Puff Collab
 
 Start with the [development runbook](./operations/development.md) and
 [contribution policy](../CONTRIBUTING.md).
