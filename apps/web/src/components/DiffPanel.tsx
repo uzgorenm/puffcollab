@@ -7,7 +7,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
-import type { ScopedThreadRef, TurnId } from "@t3tools/contracts";
+import { isRemoteHubThread, type ScopedThreadRef, type TurnId } from "@t3tools/contracts";
 import {
   ArrowRightIcon,
   CheckIcon,
@@ -155,6 +155,7 @@ export default function DiffPanel({
   });
   const activeThreadId = routeThreadRef?.threadId ?? null;
   const activeThread = useThread(routeThreadRef);
+  const localWorkspaceAvailable = !isRemoteHubThread(activeThread ?? {});
   const activeProjectId = activeThread?.projectId ?? null;
   const activeProject = useProject(
     activeThread && activeProjectId
@@ -164,7 +165,9 @@ export default function DiffPanel({
         }
       : null,
   );
-  const activeCwd = activeThread?.worktreePath ?? activeProject?.workspaceRoot;
+  const activeCwd = localWorkspaceAvailable
+    ? (activeThread?.worktreePath ?? activeProject?.workspaceRoot)
+    : undefined;
   const activeRepositoryRoot = activeThread?.worktreePath
     ? undefined
     : activeProject?.repositoryIdentity?.rootPath;
@@ -214,7 +217,12 @@ export default function DiffPanel({
     );
   }, [diffSelection, orderedTurnDiffSummaries, routeThreadRef]);
 
-  const selectedTurnId = diffSelection.kind === "turn" ? diffSelection.turnId : null;
+  const selectedTurnId =
+    diffSelection.kind === "turn"
+      ? diffSelection.turnId
+      : localWorkspaceAvailable
+        ? null
+        : (orderedTurnDiffSummaries[0]?.turnId ?? null);
   const selectedGitScope = diffSelection.kind === "unstaged" ? "unstaged" : "branch";
   const selectedBaseRef = diffSelection.kind === "branch" ? diffSelection.baseRef : null;
   const selectedFilePath = diffSelection.kind === "turn" ? diffSelection.filePath : null;
@@ -578,6 +586,7 @@ export default function DiffPanel({
 
   const openDiffFile = useCallback(
     (filePath: string) => {
+      if (!localWorkspaceAvailable) return;
       openDiffFilePrimaryAction({
         threadRef: routeThreadRef,
         filePath,
@@ -602,7 +611,13 @@ export default function DiffPanel({
         },
       });
     },
-    [activeCwd, activeRepositoryRoot, openInPreferredEditor, routeThreadRef],
+    [
+      activeCwd,
+      activeRepositoryRoot,
+      localWorkspaceAvailable,
+      openInPreferredEditor,
+      routeThreadRef,
+    ],
   );
   const toggleDiffFileCollapsed = useCallback(
     (fileKey: string) => {
@@ -681,10 +696,18 @@ export default function DiffPanel({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuRadioGroup value={selectedScopeValue} onValueChange={selectScopeValue}>
-              <DropdownMenuRadioItem value="unstaged" closeOnClick>
+              <DropdownMenuRadioItem
+                value="unstaged"
+                closeOnClick
+                disabled={!localWorkspaceAvailable}
+              >
                 <span>Working tree</span>
               </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="branch" closeOnClick>
+              <DropdownMenuRadioItem
+                value="branch"
+                closeOnClick
+                disabled={!localWorkspaceAvailable}
+              >
                 <span>Branch changes</span>
               </DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="latest" closeOnClick>
@@ -1058,6 +1081,7 @@ export default function DiffPanel({
                     if (file) toggleDiffFileCollapsed(file.fileKey);
                   }}
                   onContextMenuCapture={(event) => {
+                    if (!localWorkspaceAvailable) return;
                     const composedPath = event.nativeEvent.composedPath?.() ?? [];
                     const title = composedPath.find(
                       (node): node is HTMLElement =>
