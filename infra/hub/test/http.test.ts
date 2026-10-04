@@ -317,6 +317,11 @@ describe("dev local accounts", () => {
       body: "login=offline-dev&returnTo=%2Flink",
     });
 
+  it("serves the link page with a referrer policy that keeps its own Origin", async () => {
+    // `no-referrer` makes browsers send `Origin: null` on the page's POSTs.
+    expect((await hub.fetch("/link")).headers.get("Referrer-Policy")).toBe("same-origin");
+  });
+
   it("are off by default", async () => {
     expect((await devSignIn(hub)).status).toBe(404);
     expect(await (await hub.fetch("/link")).text()).not.toContain("Sign in locally");

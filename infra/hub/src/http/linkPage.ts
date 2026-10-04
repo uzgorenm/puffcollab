@@ -153,7 +153,9 @@ ${github}${dev}`,
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
       "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; form-action 'self' https://github.com; frame-ancestors 'none'; base-uri 'none'`,
-      "Referrer-Policy": "no-referrer",
+      // Not no-referrer: under that policy browsers send `Origin: null` on the
+      // page's own POSTs, which the hub's cross-origin check then refuses.
+      "Referrer-Policy": "same-origin",
       "X-Content-Type-Options": "nosniff",
     },
   });
